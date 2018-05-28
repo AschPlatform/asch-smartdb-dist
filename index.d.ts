@@ -106,6 +106,7 @@ export namespace AschCore
 	    syncSchema(schema: ModelSchema): void;
 	    registerSchema(...schemas: Array<ModelSchema>): void;
 	    close(): Promise<void>;
+	    initRecentHistory(history: Map<number, Array<EntityChangesItem>>): void;
 	    attachHistory(history: Map<number, Array<EntityChangesItem>>): void;
 	    getAllCached<TEntity>(model: ModelNameOrType<TEntity>, filter?: FilterFunction<TEntity>): Array<TEntity>;
 	    attach<TEntity>(schema: ModelSchema, key: EntityKey): MaybeUndefined<TEntity>;
@@ -842,7 +843,7 @@ export namespace AschCore
 	        max: number;
 	    };
 	    getChangesUntil(historyVersion: number): Array<Map<ModelAndKey, EntityChanges>>;
-	    clearHistory(historyVersion: number): void;
+	    clearHistoryBefore(historyVersion: number): void;
 	}
 
 	//declarations/StateTracker/ProxiedEntityTracker.d.ts
