@@ -225,6 +225,7 @@ export namespace AschCore
 	    format: boolean;
 	}
 	export class LogManager {
+	    static readonly Instance: LogManager;
 	    static defaultLevel: LogLevel;
 	    static logFactory: LogFactory;
 	    static getLogger(loggerName?: string): Logger;
@@ -240,6 +241,7 @@ export namespace AschCore
 	    Number = "Number",
 	    BigInt = "BigInt",
 	    Text = "Text",
+	    JSON = "Json",
 	}
 	export type FieldType = string | FieldTypes;
 	export interface Field {
@@ -272,6 +274,7 @@ export namespace AschCore
 	    constructor(schema: Schema, name: string);
 	    getFieldTypes(schema: Schema): Map<string, string>;
 	    readonly schemaObject: Schema;
+	    readonly jsonFields: string[];
 	    readonly isCompsiteKey: boolean;
 	    readonly primaryKey: MaybeUndefined<string>;
 	    readonly compositeKeys: string[];
