@@ -448,7 +448,7 @@ export namespace AschCore
 	     * @param model modelName or model type
 	     * @param entity
 	     */
-	    delete<TEntity>(model: ModelNameOrType<TEntity>, entity: TEntity): void;
+	    del<TEntity>(model: ModelNameOrType<TEntity>, entity: TEntity): void;
 	    /**
 	     * load entity from cache and database
 	     * @param model model name or model type
