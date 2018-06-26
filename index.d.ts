@@ -18,10 +18,10 @@ export namespace AschCore
 	export type BigNumber = number;
 	export interface Transaction extends Entity {
 	    id: string;
-	    blockId: string;
+	    height: number;
 	    type: number;
 	    timestamp: number;
-	    senderPublicKey: Buffer;
+	    senderPublicKey: string;
 	    senderId: string;
 	    recipientId: string;
 	    amount: BigNumber;
@@ -225,6 +225,7 @@ export namespace AschCore
 	    format: boolean;
 	}
 	export class LogManager {
+	    static readonly Instance: LogManager;
 	    static defaultLevel: LogLevel;
 	    static logFactory: LogFactory;
 	    static getLogger(loggerName?: string): Logger;
@@ -240,6 +241,7 @@ export namespace AschCore
 	    Number = "Number",
 	    BigInt = "BigInt",
 	    Text = "Text",
+	    JSON = "Json",
 	}
 	export type FieldType = string | FieldTypes;
 	export interface Field {
@@ -272,6 +274,7 @@ export namespace AschCore
 	    constructor(schema: Schema, name: string);
 	    getFieldTypes(schema: Schema): Map<string, string>;
 	    readonly schemaObject: Schema;
+	    readonly jsonFields: string[];
 	    readonly isCompsiteKey: boolean;
 	    readonly primaryKey: MaybeUndefined<string>;
 	    readonly compositeKeys: string[];
@@ -445,7 +448,7 @@ export namespace AschCore
 	     * @param model modelName or model type
 	     * @param entity
 	     */
-	    delete<TEntity>(model: ModelNameOrType<TEntity>, entity: TEntity): void;
+	    del<TEntity>(model: ModelNameOrType<TEntity>, entity: TEntity): void;
 	    /**
 	     * load entity from cache and database
 	     * @param model model name or model type
