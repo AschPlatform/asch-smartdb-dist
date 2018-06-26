@@ -18,10 +18,10 @@ export namespace AschCore
 	export type BigNumber = number;
 	export interface Transaction extends Entity {
 	    id: string;
-	    blockId: string;
+	    height: number;
 	    type: number;
 	    timestamp: number;
-	    senderPublicKey: Buffer;
+	    senderPublicKey: string;
 	    senderId: string;
 	    recipientId: string;
 	    amount: BigNumber;
