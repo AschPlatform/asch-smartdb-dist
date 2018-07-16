@@ -44,10 +44,10 @@ export namespace AschCore
 	        min: number;
 	        max: number;
 	    };
-	    put(block: Block): void;
+	    push(block: Block): void;
 	    get(height: number): MaybeUndefined<Block>;
 	    getById(id: string): MaybeUndefined<Block>;
-	    evit(fromHeight: number, toHeight: number): void;
+	    evitUntil(minEvitHeight: number): void;
 	}
 
 	//declarations/Common.d.ts
@@ -540,7 +540,7 @@ export namespace AschCore
 	    getBlocksByIds(blockIds: Array<string>, withTransactions?: boolean): Promise<Array<Block>>;
 	}
 
-	//declarations/KVDB/LevelDB.d.ts
+	//declarations/kvdb/LevelDB.d.ts
 	export type GetIndexValueFunc = (key: any, value: JsonObject) => any;
 	export type IndexField = {
 	    fieldName: string;
@@ -587,7 +587,7 @@ export namespace AschCore
 	    dump(): Promise<string>;
 	}
 
-	//declarations/SQLDB/DbConnection.d.ts
+	//declarations/sqldb/DbConnection.d.ts
 	export type ConnectionOptions = {
 	    [keys in 'storage' | 'userName' | 'password' | 'database']?: any;
 	};
@@ -614,7 +614,7 @@ export namespace AschCore
 	    rollback(): Promise<void>;
 	}
 
-	//declarations/SQLDB/SqlBuilder.d.ts
+	//declarations/sqldb/SqlBuilder.d.ts
 	export const MULTI_SQL_SEPARATOR = ";";
 	export enum SqlType {
 	    Schema = 0,
@@ -703,7 +703,7 @@ export namespace AschCore
 	    buildSelect(schema: ModelSchema, fieldsOrParams: Array<string> | JsonObject, where?: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, join?: JsonObject): SqlAndParameters;
 	}
 
-	//declarations/SQLDB/SqliteConnection.d.ts
+	//declarations/sqldb/SqliteConnection.d.ts
 	export class SqliteConnection implements DbConnection {
 	    constructor(options: ConnectionOptions);
 	    readonly connectionOptions: ConnectionOptions;
@@ -720,7 +720,7 @@ export namespace AschCore
 	    beginTrans(): Promise<DBTransaction>;
 	}
 
-	//declarations/SQLDB/SqliteWrapper.d.ts
+	//declarations/sqldb/SqliteWrapper.d.ts
 	export class SqliteWrapper {
 	    constructor();
 	    open(dbFilePath: string, callback?: Callback<boolean>): boolean;
@@ -736,7 +736,7 @@ export namespace AschCore
 	    asyncExecuteBatch(sqls: Array<SqlAndParameters>, onExecuted?: (ret: SqlExecuteResult, s: SqlAndParameters) => void): Promise<Array<SqlExecuteResult>>;
 	}
 
-	//declarations/StateTracker/EntityProxy.d.ts
+	//declarations/state-tracker/EntityProxy.d.ts
 	/**
 	 *     STATE TRANSFER                  ACTION                TRACK      CACHE
 	 * ----------------------------------------------------------------------------
@@ -792,7 +792,7 @@ export namespace AschCore
 	    cancelChanges<TEntity>(pe: Proxied<TEntity>): void;
 	}
 
-	//declarations/StateTracker/EntityTracker.d.ts
+	//declarations/state-tracker/EntityTracker.d.ts
 	export enum EntityChangeType {
 	    New = 1,
 	    Modify = 2,
@@ -849,7 +849,7 @@ export namespace AschCore
 	    clearHistoryBefore(historyVersion: number): void;
 	}
 
-	//declarations/StateTracker/ProxiedEntityTracker.d.ts
+	//declarations/state-tracker/ProxiedEntityTracker.d.ts
 	export type ProxiedEntityAndChanges = {
 	    entity: Proxied<any>;
 	    changes: MaybeUndefined<EntityChanges>;
@@ -886,7 +886,7 @@ export namespace AschCore
 	    buildRollbackChangeSqls(historyVersion: number): Array<SqlAndParameters>;
 	}
 
-	//declarations/StateTracker/SnapshotEntityTracker.d.ts
+	//declarations/state-tracker/SnapshotEntityTracker.d.ts
 	export class SnapshotEntityTracker extends BaseEntityTracker implements EntityTracker {
 	    constructor(cache: EntityCache);
 	    readonly trackingEntities: Iterable<Entity>;
