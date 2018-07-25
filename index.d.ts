@@ -113,8 +113,9 @@ export namespace AschCore
 	    queryByJson<E extends object>(schema: ModelSchema<E>, params: JsonObject): Promise<E[]>;
 	    exists<E extends object>(schema: ModelSchema<E>, condition: SqlCondition): Promise<boolean>;
 	    count<E extends object>(schema: ModelSchema<E>, condition: SqlCondition): Promise<number>;
-	    create<E extends object>(schema: ModelSchema<E>, entity: E): E;
+	    create<E extends object>(schema: ModelSchema<E>, entity: Partial<E>): E;
 	    load<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): Promise<MaybeUndefined<E>>;
+	    loadSync<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    getChanges(): ChangesHistoryItem<Entity>[];
 	    getTrackingOrCachedEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    lockInThisSession(lockName: string, notThrow?: boolean): boolean;
@@ -128,8 +129,9 @@ export namespace AschCore
 	     * @param changesNO ,this value should be returned by @see saveChanges()
 	     */
 	    rollbackChanges(serial: number): Promise<number>;
-	    update<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>, modifier: Partial<E>): void;
-	    delete<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): void;
+	    update<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>, modifier: Partial<E>): void;
+	    increase<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>, increasements: Partial<E>): Partial<E>;
+	    delete<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>): void;
 	    beginTransaction(): Promise<DBTransaction>;
 	    beginEntityTransaction(): void;
 	    commitEntityTransaction(): void;
@@ -426,26 +428,32 @@ export namespace AschCore
 	     * @param entity prototype entity which properties will copy to result entity
 	     * @returns tracking entity
 	     */
-	    create<E extends object>(model: ModelNameOrType<E>, entity: E): E;
+	    create<E extends object>(model: ModelNameOrType<E>, entity: Partial<E>): E;
+	    createOrLoad<E extends object>(model: ModelNameOrType<E>, entity: E): {
+	        create: boolean;
+	        entity: E;
+	    };
+	    increase<E extends object>(model: ModelNameOrType<E>, increasements: Partial<E>, key: NormalizedEntityKey<E>): Partial<E>;
 	    /**
 	     * update a entity
 	     * @param model modelName or model type
 	     * @param keyOrEntity primary key of entity or parital entity with primary key property(s)
 	     * @param modifier json modifier, keyOrEntity properties used as modifier if not given
 	     */
-	    update<E extends object>(model: ModelNameOrType<E>, keyOrEntity: PrimaryKey<E> | E, modifier?: Partial<E>): void;
+	    update<E extends object>(model: ModelNameOrType<E>, modifier: Partial<E>, key: NormalizedEntityKey<E>): void;
 	    /**
 	     * delete a entity
 	     * @param model modelName or model type
 	     * @param key primaryKey of entity
 	     */
-	    del<E extends object>(model: ModelNameOrType<E>, keyOrEntity: PrimaryKey<E> | E): void;
+	    del<E extends object>(model: ModelNameOrType<E>, key: NormalizedEntityKey<E>): void;
 	    /**
 	     * load entity from cache and database
 	     * @param model model name or model type
 	     * @param key key of entity
 	     */
 	    load<E extends object>(model: ModelNameOrType<E>, key: EntityKey<E>): Promise<MaybeUndefined<E>>;
+	    loadSync<E extends object>(model: ModelNameOrType<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    /**
 	   * get entities from database
 	   * @param model model name or model type
