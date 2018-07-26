@@ -102,7 +102,6 @@ export namespace AschCore
 	export class DbSession {
 	    constructor(connection: DbConnection, onLoadHistory: Nullable<LoadChangesHistoryAction>, sessionOptions: DbSessionOptions);
 	    readonly isOpen: boolean;
-	    readonly entityCache: EntityCache;
 	    syncSchema<E extends object>(schema: ModelSchema<E>): void;
 	    registerSchema(...schemas: ModelSchema<Entity>[]): void;
 	    close(): Promise<void>;
@@ -118,6 +117,7 @@ export namespace AschCore
 	    loadSync<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    getChanges(): ChangesHistoryItem<Entity>[];
 	    getTrackingOrCachedEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
+	    getCachedEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    lockInThisSession(lockName: string, notThrow?: boolean): boolean;
 	    /**
 	     * Save changes to database
@@ -272,6 +272,7 @@ export namespace AschCore
 	    readonly isLocal: boolean;
 	    readonly isReadonly: boolean;
 	    readonly memCached: boolean;
+	    hasUniqueProperty(...properties: string[]): boolean;
 	    isValidProperty(name: string): boolean;
 	    isValidEntityKey(key: EntityKey<E>): boolean;
 	    setPrimaryKey(entity: Partial<E>, key: PrimaryKey<E>): Partial<E>;
@@ -1392,16 +1393,18 @@ export namespace AschCore
 	    modelName: string;
 	    indexes: Iterable<EntityIndex<E>>;
 	    insert: (entity: E) => E;
-	    update: (entity: E) => MaybeUndefined<E>;
-	    delete: (entity: E) => MaybeUndefined<E>;
+	    update: (entity: Partial<E>) => MaybeUndefined<E>;
+	    delete: (entity: NormalizedEntityKey<E>) => MaybeUndefined<E>;
 	    get: (condition: UniqueCondition<E>) => MaybeUndefined<E>;
-	    getAll: () => Array<E>;
+	    getAll: (filter?: FilterFunction<E>) => Array<E>;
 	    find: (condition: MembaseCondition) => Array<E>;
 	}
 	export interface Membase {
 	    collections: Iterable<EntityCollection<any>>;
+	    existsCollection: (name: string) => boolean;
+	    removeAllCollections: () => void;
 	    getCollection: <E extends object>(name: string) => MaybeUndefined<EntityCollection<E>>;
-	    addCollection: <E extends object>(name: string, indexes: EntityIndex<E>[]) => EntityCollection<E>;
+	    addCollection: <E extends object>(schema: ModelSchema<E>) => EntityCollection<E>;
 	    removeCollection: (name: string) => void;
 	}
 	export class MembaseFactory {
@@ -1561,6 +1564,8 @@ export namespace AschCore
 
 	//declarations/tracker/BasicEntityTracker.d.ts
 	export type LoadChangesHistoryAction = (fromVersion: number, toVersion: number) => Promise<Map<number, ChangesHistoryItem<Entity>[]>>;
+	export type Stack<T> = Array<T>;
+	export const Stack: ArrayConstructor;
 	export class BasicEntityTracker implements EntityTracker {
 	    makeModelAndKey<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): ModelAndKey;
 	    splitModelAndKey<E extends object>(modelAndKey: ModelAndKey): {
@@ -1569,15 +1574,12 @@ export namespace AschCore
 	    };
 	    readonly trackingEntities: Iterable<TrackingEntity<Entity>>;
 	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
-	    getTrackingChanges(): ChangesHistoryItem<Entity>[];
-	    detectChanges(): TrackingEntityChangesItem<Entity>[];
+	    getConfimedChanges(): EntityChanges<Entity>[];
 	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<Versioned<E>>;
 	    trackPersistent<E extends object>(schema: ModelSchema<E>, entity: Versioned<E>): TrackingEntity<Versioned<E>>;
 	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>): void;
 	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>, modifier: Partial<E>): void;
 	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<Versioned<E>>>;
-	    stopTrack<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): void;
-	    stopTrackAll(): void;
 	    acceptChanges(historyVersion: number): void;
 	    rejectChanges(): void;
 	    rollbackChanges(historyVersion: number): Promise<void>;
@@ -1588,56 +1590,11 @@ export namespace AschCore
 	        min: number;
 	        max: number;
 	    };
-	    getChangesUntil(historyVersion: number): Promise<Map<ModelAndKey, EntityChanges<Entity>>[]>;
+	    getChangesUntil(historyVersion: number): Promise<Stack<EntityChanges<Entity>>>;
 	}
 
 	//declarations/tracker/EntityStateManager.d.ts
-	export const ENTITY_VERSION_PROPERTY = "_version_";
-	export const ENTITY_EXTENSION_SYMBOL = "__extension__";
-	export type Versioned<E extends object> = Minix<E, {
-	    '_version_': number;
-	}>;
-	export interface EntityStateManager<E extends object> {
-	    readonly version: number;
-	    readonly state: EntityState;
-	    readonly confirmed: boolean;
-	    readonly dirty: boolean;
-	    readonly schema: ModelSchema<E>;
-	    readonly primaryKey: PrimaryKey<E>;
-	    readonly entity: E;
-	    readonly deletedOrTransient: boolean;
-	    getConfirmedChanges(): MaybeUndefined<EntityChanges<E>>;
-	    trackNew(confirming: boolean): void;
-	    trackDelete(confirming: boolean): void;
-	    trackModify(confirming: boolean, ...modifiedProperties: PropertyValue<E>[]): void;
-	    acceptChanges(historyVersion: number): void;
-	    undoChanges(changes?: EntityChanges<E>): void;
-	    confirm(): void;
-	    cancelConfirm(): void;
-	    rejectChanges(): void;
-	}
-	export type TrackerSaveHistoryAction<E extends object> = (schema: ModelSchema<E>, entity: E, changes: EntityChanges<E>, historyVersion: number) => void;
-	export class DefaultEntityStateManager<E extends object> implements EntityStateManager<E> {
-	    state: EntityState;
-	    schema: ModelSchema<E>;
-	    changes: Nullable<EntityChanges<E>>;
-	    entity: Versioned<E>;
-	    constructor(schema: ModelSchema<E>, entity: Versioned<E>, state: EntityState);
-	    readonly dirty: boolean;
-	    readonly deletedOrTransient: boolean;
-	    version: number;
-	    readonly confirmed: boolean;
-	    readonly primaryKey: PrimaryKey<E>;
-	    acceptChanges(historyVersion: number): void;
-	    getConfirmedChanges(): MaybeUndefined<EntityChanges<E>>;
-	    trackNew(confirming: boolean): void;
-	    trackDelete(confirming: boolean): void;
-	    trackModify(confirming: boolean, ...modifiedProperties: PropertyValue<E>[]): void;
-	    confirm(): void;
-	    undoChanges(changes?: EntityChanges<E>): void;
-	    cancelConfirm(): void;
-	    rejectChanges(): void;
-	}
+
 
 	//declarations/tracker/EntityTracker.d.ts
 	export enum EntityState {
@@ -1647,6 +1604,11 @@ export namespace AschCore
 	    Modified = 2,
 	    Deleted = 3,
 	}
+	export const ENTITY_VERSION_PROPERTY = "_version_";
+	export const ENTITY_EXTENSION_SYMBOL = "__extension__";
+	export type Versioned<E extends object> = Minix<E, {
+	    '_version_': number;
+	}>;
 	/******************************/
 	/******************************/
 	export enum EntityChangeType {
@@ -1656,47 +1618,35 @@ export namespace AschCore
 	}
 	export interface PropertyChange<E extends object> {
 	    name: string & ((keyof E) | '_version_');
-	    original: any;
-	    current: any;
+	    original?: any;
+	    current?: any;
 	}
 	export interface PropertyValue<E extends object> {
 	    name: Property<E>;
 	    value: any;
 	}
 	export interface EntityChanges<E extends object> {
-	    dbVersion: number;
-	    unconfirmed: boolean;
-	    previousState: EntityState;
 	    type: EntityChangeType;
+	    dbVersion: number;
+	    model: string;
+	    primaryKey: NormalizedEntityKey<E>;
 	    propertyChanges: PropertyChange<E>[];
 	}
 	export type ModelAndKey = string;
-	export type ChangesHistoryItem<E extends object> = {
-	    modelAndKey: ModelAndKey;
-	    changes?: EntityChanges<E>;
-	};
-	export type TrackingEntityChangesItem<E extends object> = {
-	    schema: ModelSchema<E>;
-	    key: PrimaryKey<E>;
-	    changes: EntityChanges<E>;
-	};
-	export type TrackingEntity<E extends object> = Minix<E, {
-	    getStateManager: () => EntityStateManager<E>;
-	}>;
+	export type ChangesHistoryItem<E extends object> = EntityChanges<E>;
+	export type TrackingEntityChangesItem<E extends object> = EntityChanges<E>;
+	export type TrackingEntity<E extends object> = Versioned<E>;
 	export interface EntityTracker {
-	    readonly trackingEntities: Iterable<Entity>;
-	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
-	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<Versioned<E>>>;
-	    getTrackingChanges(): ChangesHistoryItem<Entity>[];
 	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<Versioned<E>>;
 	    trackPersistent<E extends object>(schema: ModelSchema<E>, entityWithVersion: Versioned<E>): TrackingEntity<Versioned<E>>;
 	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>, modifier: Partial<E>): void;
 	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>): void;
-	    stopTrack<E extends object>(schema: ModelSchema<E>, entity: E): void;
-	    stopTrackAll(): void;
 	    acceptChanges(historyVersion: number): void;
 	    rejectChanges(): void;
 	    rollbackChanges(historyVersion: number): Promise<void>;
+	    getConfimedChanges(): EntityChanges<Entity>[];
+	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
+	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<Versioned<E>>>;
 	    isConfirming: boolean;
 	    beginConfirm(): void;
 	    confirm(): void;
