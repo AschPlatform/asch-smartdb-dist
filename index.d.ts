@@ -1282,7 +1282,7 @@ export namespace AschCore
 	    evit<E extends object>(modelName: string, key: PrimaryKey<E>): void;
 	    exists<E extends object>(modelName: string, key: PrimaryKey<E>): boolean;
 	    existsModel(modelName: string): boolean;
-	    refreshUniques<E extends object>(modelName: string, key: PrimaryKey<E>): boolean;
+	    refreshCached<E extends object>(modelName: string, key: PrimaryKey<E>, modifier: PropertyValue<E>[]): boolean;
 	}
 	export class UniquedEntityCache implements EntityCache {
 	    constructor(log: Logger, schemas: Map<string, ModelSchema<Entity>>);
@@ -1293,7 +1293,7 @@ export namespace AschCore
 	    get<E extends object>(modelName: string, key: PrimaryKey<E>): MaybeUndefined<E>;
 	    getUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): MaybeUndefined<E>;
 	    existsUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): boolean;
-	    refreshUniques<E extends object>(modelName: string, key: PrimaryKey<E>): boolean;
+	    refreshCached<E extends object>(modelName: string, key: PrimaryKey<E>, modifier: PropertyValue<E>[]): boolean;
 	    getAll<E extends object>(modelName: string, filter?: FilterFunction<E>): MaybeUndefined<E[]>;
 	    put<E extends object>(modelName: string, key: PrimaryKey<E>, entity: Entity): void;
 	    evit<E extends object>(modelName: string, key: PrimaryKey<E>): void;
