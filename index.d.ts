@@ -97,7 +97,6 @@ export namespace AschCore
 	export interface DbSessionOptions {
 	    name?: string;
 	    maxHistoryVersionsHold?: number;
-	    cacheOptions?: LRUEntityCacheOptions;
 	}
 	export class DbSession {
 	    constructor(connection: DbConnection, onLoadHistory: Nullable<LoadChangesHistoryAction>, sessionOptions: DbSessionOptions);
@@ -250,6 +249,7 @@ export namespace AschCore
 	export interface Schema {
 	    table?: string;
 	    memory?: boolean;
+	    maxCached?: number;
 	    readonly?: boolean;
 	    local?: boolean;
 	    tableFields: Field[];
@@ -268,6 +268,7 @@ export namespace AschCore
 	    readonly compositeKeys: Property<E>[];
 	    readonly indexes: ModelIndex<E>[];
 	    readonly uniqueIndexes: ModelIndex<E>[];
+	    readonly maxCached: MaybeUndefined<number>;
 	    readonly modelName: string;
 	    readonly isLocal: boolean;
 	    readonly isReadonly: boolean;
@@ -304,21 +305,10 @@ export namespace AschCore
 	     */
 	    maxBlockHistoryHold?: number;
 	    /**
-	     * clean persisted history automatically
-	     * @default false
-	     */
-	    autoCleanPersistedHistory?: boolean;
-	    /**
 	     * cached last block count
 	     * @default 10
 	     */
 	    cachedBlockCount?: number;
-	    /**
-	     * max cached entity count, config it per model, LRU
-	     * sample: { User: 200, Trans: 5000 } max cached 200s User ，5000 for Trans
-	     * @default 50000 each model
-	     */
-	    entityCacheOptions?: LRUEntityCacheOptions;
 	    /**
 	     * SmartDB will check modifier properties in model if checkModifier is true
 	     */
@@ -385,18 +375,31 @@ export namespace AschCore
 	     * hold a lock name which only succeed in first time of each block.
 	     * @param lockName lock name
 	     * @param notThrow do not throw exception if lock failed
+	     * @throws lock faild if lockName exists already and notThrow is false
 	     */
 	    lockInCurrentBlock(lockName: string, notThrow?: boolean): boolean;
+	    /**
+	   * hold a lock name which only succeed in first time of each block.
+	   * @param lockName lock name
+	   * @throws lock faild if lockName exists already
+	   */
+	    lock(lockName: string): void;
+	    /**
+	   * hold a lock name which only succeed in first time of each block.
+	   * @param lockName lock name
+	   * @returns true if lock succeed else false
+	   */
+	    tryLock(lockName: string): boolean;
 	    /**
 	     * begin a contract transaction which effect entities in memory
 	     */
 	    beginContract(): void;
 	    /**
-	     * commit contract transaction which effect entities in memory
+	     * commit entities changes , these changes will be save into database when block forged
 	     */
 	    commitContract(): void;
 	    /**
-	     * rollback contract transaction which effect entities in memory
+	     * rollback entities changes in memory
 	     */
 	    rollbackContract(): void;
 	    /**
@@ -539,7 +542,6 @@ export namespace AschCore
 	}
 
 	//declarations/Utils.d.ts
-	import * as _ from 'lodash';
 	export class PerformanceHelper {
 	    readonly time: (name: string) => void;
 	    readonly endTime: (refreshUptime?: boolean) => void;
@@ -548,684 +550,264 @@ export namespace AschCore
 	}
 	export class Utils {
 	    static readonly Array: {
-	        chunk: <T>(array: ArrayLike<T> | null | undefined, size?: number | undefined) => T[][];
-	        compact: <T>(array: ArrayLike<false | "" | 0 | T | null | undefined> | null | undefined) => T[];
-	        concat: <T>(array: _.Many<T>, ...values: _.Many<T>[]) => T[];
-	        difference: <T>(array: ArrayLike<T> | null | undefined, ...values: ArrayLike<T>[]) => T[];
-	        differenceBy: {
-	            <T1, T2>(array: ArrayLike<T1> | null | undefined, values: ArrayLike<T2>, iteratee: _.ValueIteratee<T1 | T2>): T1[];
-	            <T1, T2, T3>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, iteratee: _.ValueIteratee<T1 | T2 | T3>): T1[];
-	            <T1, T2, T3, T4>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, values3: ArrayLike<T4>, iteratee: _.ValueIteratee<T1 | T2 | T3 | T4>): T1[];
-	            <T1, T2, T3, T4, T5>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, values3: ArrayLike<T4>, values4: ArrayLike<T5>, iteratee: _.ValueIteratee<T1 | T2 | T3 | T4 | T5>): T1[];
-	            <T1, T2, T3, T4, T5, T6>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, values3: ArrayLike<T4>, values4: ArrayLike<T5>, values5: ArrayLike<T6>, iteratee: _.ValueIteratee<T1 | T2 | T3 | T4 | T5 | T6>): T1[];
-	            <T1, T2, T3, T4, T5, T6, T7>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, values3: ArrayLike<T4>, values4: ArrayLike<T5>, values5: ArrayLike<T6>, ...values: (string | [string, any] | ArrayLike<T7> | ((value: T1 | T2 | T3 | T4 | T5 | T6 | T7) => _.NotVoid) | _.PartialDeep<T1> | _.PartialDeep<T2> | _.PartialDeep<T3> | _.PartialDeep<T4> | _.PartialDeep<T5> | _.PartialDeep<T6> | _.PartialDeep<T7>)[]): T1[];
-	            <T>(array: ArrayLike<T> | null | undefined, ...values: ArrayLike<T>[]): T[];
-	        };
-	        differenceWith: {
-	            <T1, T2>(array: ArrayLike<T1> | null | undefined, values: ArrayLike<T2>, comparator: _.Comparator2<T1, T2>): T1[];
-	            <T1, T2, T3>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, comparator: _.Comparator2<T1, T2 | T3>): T1[];
-	            <T1, T2, T3, T4>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, ...values: (ArrayLike<T4> | _.Comparator2<T1, T2 | T3 | T4>)[]): T1[];
-	            <T>(array: ArrayLike<T> | null | undefined, ...values: ArrayLike<T>[]): T[];
-	        };
-	        drop: <T>(array: ArrayLike<T> | null | undefined, n?: number | undefined) => T[];
-	        dropRight: <T>(array: ArrayLike<T> | null | undefined, n?: number | undefined) => T[];
-	        dropRightWhile: <T>(array: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, _.NotVoid> | _.PartialDeep<T> | undefined) => T[];
-	        dropWhile: <T>(array: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, _.NotVoid> | _.PartialDeep<T> | undefined) => T[];
-	        fill: {
-	            <T>(array: any[] | null | undefined, value: T): T[];
-	            <T>(array: ArrayLike<any> | null | undefined, value: T): ArrayLike<T>;
-	            <T, U>(array: U[] | null | undefined, value: T, start?: number | undefined, end?: number | undefined): (T | U)[];
-	            <T, U>(array: ArrayLike<U> | null | undefined, value: T, start?: number | undefined, end?: number | undefined): ArrayLike<T | U>;
-	        };
-	        findIndex: <T>(array: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined, fromIndex?: number | undefined) => number;
-	        findLastIndex: <T>(array: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined, fromIndex?: number | undefined) => number;
-	        first: <T>(array: ArrayLike<T> | null | undefined) => T | undefined;
-	        head: <T>(array: ArrayLike<T> | null | undefined) => T | undefined;
-	        flatten: <T>(array: ArrayLike<_.Many<T>> | null | undefined) => T[];
-	        flattenDeep: <T>(array: _.ListOfRecursiveArraysOrValues<T> | null | undefined) => T[];
-	        flattenDepth: <T>(array: _.ListOfRecursiveArraysOrValues<T> | null | undefined, depth?: number | undefined) => T[];
-	        fromPairs: {
-	            <T>(pairs: ArrayLike<[PropertyKey, T]> | null | undefined): _.Dictionary<T>;
-	            (pairs: ArrayLike<any[]> | null | undefined): _.Dictionary<any>;
-	        };
-	        indexOf: <T>(array: ArrayLike<T> | null | undefined, value: T, fromIndex?: number | undefined) => number;
-	        initial: <T>(array: ArrayLike<T> | null | undefined) => T[];
-	        intersection: <T>(...arrays: ArrayLike<T>[]) => T[];
-	        intersectionBy: {
-	            <T1, T2>(array: ArrayLike<T1> | null, values: ArrayLike<T2>, iteratee: _.ValueIteratee<T1 | T2>): T1[];
-	            <T1, T2, T3>(array: ArrayLike<T1> | null, values1: ArrayLike<T2>, values2: ArrayLike<T3>, iteratee: _.ValueIteratee<T1 | T2 | T3>): T1[];
-	            <T1, T2, T3, T4>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, ...values: (string | [string, any] | ArrayLike<T4> | ((value: T1 | T2 | T3 | T4) => _.NotVoid) | _.PartialDeep<T1> | _.PartialDeep<T2> | _.PartialDeep<T3> | _.PartialDeep<T4>)[]): T1[];
-	            <T>(array?: ArrayLike<T> | null | undefined, ...values: ArrayLike<T>[]): T[];
-	        };
-	        intersectionWith: {
-	            <T1, T2>(array: ArrayLike<T1> | null | undefined, values: ArrayLike<T2>, comparator: _.Comparator2<T1, T2>): T1[];
-	            <T1, T2, T3>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, comparator: _.Comparator2<T1, T2 | T3>): T1[];
-	            <T1, T2, T3, T4>(array: ArrayLike<T1> | null | undefined, values1: ArrayLike<T2>, values2: ArrayLike<T3>, ...values: (ArrayLike<T4> | _.Comparator2<T1, T2 | T3 | T4>)[]): T1[];
-	            <T>(array?: ArrayLike<T> | null | undefined, ...values: ArrayLike<T>[]): T[];
-	        };
-	        join: (array: ArrayLike<any> | null | undefined, separator?: string | undefined) => string;
-	        last: <T>(array: ArrayLike<T> | null | undefined) => T | undefined;
-	        lastIndexOf: <T>(array: ArrayLike<T> | null | undefined, value: T, fromIndex?: number | true | undefined) => number;
-	        nth: <T>(array: ArrayLike<T> | null | undefined, n?: number | undefined) => T | undefined;
-	        pull: {
-	            <T>(array: T[], ...values: T[]): T[];
-	            <T>(array: ArrayLike<T>, ...values: T[]): ArrayLike<T>;
-	        };
-	        pullAll: {
-	            <T>(array: T[], values?: ArrayLike<T> | undefined): T[];
-	            <T>(array: ArrayLike<T>, values?: ArrayLike<T> | undefined): ArrayLike<T>;
-	        };
-	        pullAllBy: {
-	            <T>(array: T[], values?: ArrayLike<T> | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): T[];
-	            <T>(array: ArrayLike<T>, values?: ArrayLike<T> | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): ArrayLike<T>;
-	            <T1, T2>(array: T1[], values: ArrayLike<T2>, iteratee: _.ValueIteratee<T1 | T2>): T1[];
-	            <T1, T2>(array: ArrayLike<T1>, values: ArrayLike<T2>, iteratee: _.ValueIteratee<T1 | T2>): ArrayLike<T1>;
-	        };
-	        pullAllWith: {
-	            <T>(array: T[], values?: ArrayLike<T> | undefined, comparator?: _.Comparator<T> | undefined): T[];
-	            <T>(array: ArrayLike<T>, values?: ArrayLike<T> | undefined, comparator?: _.Comparator<T> | undefined): ArrayLike<T>;
-	            <T1, T2>(array: T1[], values: ArrayLike<T2>, comparator: _.Comparator2<T1, T2>): T1[];
-	            <T1, T2>(array: ArrayLike<T1>, values: ArrayLike<T2>, comparator: _.Comparator2<T1, T2>): ArrayLike<T1>;
-	        };
-	        pullAt: {
-	            <T>(array: T[], ...indexes: _.Many<number>[]): T[];
-	            <T>(array: ArrayLike<T>, ...indexes: _.Many<number>[]): ArrayLike<T>;
-	        };
-	        remove: <T>(array: ArrayLike<T>, predicate?: string | [string, any] | _.ListIterator<T, _.NotVoid> | _.PartialDeep<T> | undefined) => T[];
-	        reverse: <TList extends ArrayLike<any>>(array: TList) => TList;
-	        slice: <T>(array: ArrayLike<T> | null | undefined, start?: number | undefined, end?: number | undefined) => T[];
-	        sortedIndex: {
-	            <T>(array: ArrayLike<T> | null | undefined, value: T): number;
-	            <T>(array: ArrayLike<T> | null | undefined, value: T): number;
-	        };
-	        sortedIndexBy: <T>(array: ArrayLike<T> | null | undefined, value: T, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined) => number;
-	        sortedIndexOf: <T>(array: ArrayLike<T> | null | undefined, value: T) => number;
-	        sortedLastIndex: <T>(array: ArrayLike<T> | null | undefined, value: T) => number;
-	        sortedLastIndexBy: <T>(array: ArrayLike<T> | null | undefined, value: T, iteratee: _.ValueIteratee<T>) => number;
-	        sortedLastIndexOf: <T>(array: ArrayLike<T> | null | undefined, value: T) => number;
-	        sortedUniq: <T>(array: ArrayLike<T> | null | undefined) => T[];
-	        sortedUniqBy: <T>(array: ArrayLike<T> | null | undefined, iteratee: _.ValueIteratee<T>) => T[];
-	        tail: <T>(array: ArrayLike<T> | null | undefined) => T[];
-	        take: <T>(array: ArrayLike<T> | null | undefined, n?: number | undefined) => T[];
-	        takeRight: <T>(array: ArrayLike<T> | null | undefined, n?: number | undefined) => T[];
-	        takeRightWhile: <T>(array: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, _.NotVoid> | _.PartialDeep<T> | undefined) => T[];
-	        takeWhile: <T>(array: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, _.NotVoid> | _.PartialDeep<T> | undefined) => T[];
-	        union: <T>(...arrays: (ArrayLike<T> | null | undefined)[]) => T[];
-	        unionBy: {
-	            <T>(arrays: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): T[];
-	            <T>(arrays1: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): T[];
-	            <T>(arrays1: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, arrays3: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): T[];
-	            <T>(arrays1: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, arrays3: ArrayLike<T> | null | undefined, arrays4: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): T[];
-	            <T>(arrays1: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, arrays3: ArrayLike<T> | null | undefined, arrays4: ArrayLike<T> | null | undefined, arrays5: ArrayLike<T> | null | undefined, ...iteratee: (string | [string, any] | ArrayLike<T> | ((value: T) => _.NotVoid) | _.PartialDeep<T> | null | undefined)[]): T[];
-	        };
-	        unionWith: {
-	            <T>(arrays: ArrayLike<T> | null | undefined, comparator?: _.Comparator<T> | undefined): T[];
-	            <T>(arrays: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, comparator?: _.Comparator<T> | undefined): T[];
-	            <T>(arrays: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, arrays3: ArrayLike<T> | null | undefined, ...comparator: (ArrayLike<T> | _.Comparator<T> | null | undefined)[]): T[];
-	        };
-	        uniq: <T>(array: ArrayLike<T> | null | undefined) => T[];
-	        uniqBy: <T>(array: ArrayLike<T> | null | undefined, iteratee: _.ValueIteratee<T>) => T[];
-	        uniqWith: <T>(array: ArrayLike<T> | null | undefined, comparator?: _.Comparator<T> | undefined) => T[];
-	        unzip: <T>(array: T[][] | ArrayLike<ArrayLike<T>> | null | undefined) => T[][];
-	        unzipWith: {
-	            <T, TResult>(array: ArrayLike<ArrayLike<T>> | null | undefined, iteratee: (...values: T[]) => TResult): TResult[];
-	            <T>(array: ArrayLike<ArrayLike<T>> | null | undefined): T[][];
-	        };
-	        without: <T>(array: ArrayLike<T> | null | undefined, ...values: T[]) => T[];
-	        xor: <T>(...arrays: (ArrayLike<T> | null | undefined)[]) => T[];
-	        xorBy: {
-	            <T>(arrays: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): T[];
-	            <T>(arrays: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): T[];
-	            <T>(arrays: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, arrays3: ArrayLike<T> | null | undefined, ...iteratee: (string | [string, any] | ArrayLike<T> | ((value: T) => _.NotVoid) | _.PartialDeep<T> | null | undefined)[]): T[];
-	        };
-	        xorWith: {
-	            <T>(arrays: ArrayLike<T> | null | undefined, comparator?: _.Comparator<T> | undefined): T[];
-	            <T>(arrays: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, comparator?: _.Comparator<T> | undefined): T[];
-	            <T>(arrays: ArrayLike<T> | null | undefined, arrays2: ArrayLike<T> | null | undefined, arrays3: ArrayLike<T> | null | undefined, ...comparator: (ArrayLike<T> | _.Comparator<T> | null | undefined)[]): T[];
-	        };
-	        zip: {
-	            <T1, T2>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>): [T1 | undefined, T2 | undefined][];
-	            <T1, T2, T3>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>, arrays3: ArrayLike<T3>): [T1 | undefined, T2 | undefined, T3 | undefined][];
-	            <T1, T2, T3, T4>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>, arrays3: ArrayLike<T3>, arrays4: ArrayLike<T4>): [T1 | undefined, T2 | undefined, T3 | undefined, T4 | undefined][];
-	            <T1, T2, T3, T4, T5>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>, arrays3: ArrayLike<T3>, arrays4: ArrayLike<T4>, arrays5: ArrayLike<T5>): [T1 | undefined, T2 | undefined, T3 | undefined, T4 | undefined, T5 | undefined][];
-	            <T>(...arrays: (ArrayLike<T> | null | undefined)[]): (T | undefined)[][];
-	        };
-	        zipObject: {
-	            <T>(props: ArrayLike<PropertyKey>, values: ArrayLike<T>): _.Dictionary<T>;
-	            (props?: ArrayLike<PropertyKey> | undefined): _.Dictionary<undefined>;
-	        };
-	        zipObjectDeep: (paths?: ArrayLike<_.Many<PropertyKey>> | undefined, values?: ArrayLike<any> | undefined) => object;
-	        zipWith: {
-	            <T, TResult>(arrays: ArrayLike<T>, iteratee: (value1: T) => TResult): TResult[];
-	            <T1, T2, TResult>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>, iteratee: (value1: T1, value2: T2) => TResult): TResult[];
-	            <T1, T2, T3, TResult>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>, arrays3: ArrayLike<T3>, iteratee: (value1: T1, value2: T2, value3: T3) => TResult): TResult[];
-	            <T1, T2, T3, T4, TResult>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>, arrays3: ArrayLike<T3>, arrays4: ArrayLike<T4>, iteratee: (value1: T1, value2: T2, value3: T3, value4: T4) => TResult): TResult[];
-	            <T1, T2, T3, T4, T5, TResult>(arrays1: ArrayLike<T1>, arrays2: ArrayLike<T2>, arrays3: ArrayLike<T3>, arrays4: ArrayLike<T4>, arrays5: ArrayLike<T5>, iteratee: (value1: T1, value2: T2, value3: T3, value4: T4, value5: T5) => TResult): TResult[];
-	            <T, TResult>(...iteratee: (((...group: T[]) => TResult) | ArrayLike<T> | null | undefined)[]): TResult[];
-	        };
+	        chunk: any;
+	        compact: any;
+	        concat: any;
+	        difference: any;
+	        differenceBy: any;
+	        differenceWith: any;
+	        drop: any;
+	        dropRight: any;
+	        dropRightWhile: any;
+	        dropWhile: any;
+	        fill: any;
+	        findIndex: any;
+	        findLastIndex: any;
+	        first: any;
+	        head: any;
+	        flatten: any;
+	        flattenDeep: any;
+	        flattenDepth: any;
+	        fromPairs: any;
+	        indexOf: any;
+	        initial: any;
+	        intersection: any;
+	        intersectionBy: any;
+	        intersectionWith: any;
+	        join: any;
+	        last: any;
+	        lastIndexOf: any;
+	        nth: any;
+	        pull: any;
+	        pullAll: any;
+	        pullAllBy: any;
+	        pullAllWith: any;
+	        pullAt: any;
+	        remove: any;
+	        reverse: any;
+	        slice: any;
+	        sortedIndex: any;
+	        sortedIndexBy: any;
+	        sortedIndexOf: any;
+	        sortedLastIndex: any;
+	        sortedLastIndexBy: any;
+	        sortedLastIndexOf: any;
+	        sortedUniq: any;
+	        sortedUniqBy: any;
+	        tail: any;
+	        take: any;
+	        takeRight: any;
+	        takeRightWhile: any;
+	        takeWhile: any;
+	        union: any;
+	        unionBy: any;
+	        unionWith: any;
+	        uniq: any;
+	        uniqBy: any;
+	        uniqWith: any;
+	        unzip: any;
+	        unzipWith: any;
+	        without: any;
+	        xor: any;
+	        xorBy: any;
+	        xorWith: any;
+	        zip: any;
+	        zipObject: any;
+	        zipObjectDeep: any;
+	        zipWith: any;
 	    };
 	    static readonly String: {
-	        camelCase: (string?: string | undefined) => string;
-	        capitalize: (string?: string | undefined) => string;
-	        deburr: (string?: string | undefined) => string;
-	        endsWith: (string?: string | undefined, target?: string | undefined, position?: number | undefined) => boolean;
-	        escape: (string?: string | undefined) => string;
-	        escapeRegExp: (string?: string | undefined) => string;
-	        kebabCase: (string?: string | undefined) => string;
-	        lowerCase: (string?: string | undefined) => string;
-	        lowerFirst: (string?: string | undefined) => string;
-	        pad: (string?: string | undefined, length?: number | undefined, chars?: string | undefined) => string;
-	        padEnd: (string?: string | undefined, length?: number | undefined, chars?: string | undefined) => string;
-	        padStart: (string?: string | undefined, length?: number | undefined, chars?: string | undefined) => string;
-	        parseInt: (string: string, radix?: number | undefined) => number;
-	        repeat: (string?: string | undefined, n?: number | undefined) => string;
-	        replace: {
-	            (string: string, pattern: string | RegExp, replacement: string | _.ReplaceFunction): string;
-	            (pattern: string | RegExp, replacement: string | _.ReplaceFunction): string;
-	        };
-	        snakeCase: (string?: string | undefined) => string;
-	        split: {
-	            (string: string, separator?: string | RegExp | undefined, limit?: number | undefined): string[];
-	            (string: string, index: string | number, guard: object): string[];
-	        };
-	        startCase: (string?: string | undefined) => string;
-	        startsWith: (string?: string | undefined, target?: string | undefined, position?: number | undefined) => boolean;
-	        template: (string?: string | undefined, options?: _.TemplateOptions | undefined) => _.TemplateExecutor;
-	        toLower: (string?: string | undefined) => string;
-	        toUpper: (string?: string | undefined) => string;
-	        trim: {
-	            (string?: string | undefined, chars?: string | undefined): string;
-	            (string: string, index: string | number, guard: object): string;
-	        };
-	        trimEnd: {
-	            (string?: string | undefined, chars?: string | undefined): string;
-	            (string: string, index: string | number, guard: object): string;
-	        };
-	        trimStart: {
-	            (string?: string | undefined, chars?: string | undefined): string;
-	            (string: string, index: string | number, guard: object): string;
-	        };
-	        truncate: (string?: string | undefined, options?: _.TruncateOptions | undefined) => string;
-	        unescape: (string?: string | undefined) => string;
-	        upperCase: (string?: string | undefined) => string;
-	        upperFirst: (string?: string | undefined) => string;
-	        words: {
-	            (string?: string | undefined, pattern?: string | RegExp | undefined): string[];
-	            (string: string, index: string | number, guard: object): string[];
-	        };
+	        camelCase: any;
+	        capitalize: any;
+	        deburr: any;
+	        endsWith: any;
+	        escape: any;
+	        escapeRegExp: any;
+	        kebabCase: any;
+	        lowerCase: any;
+	        lowerFirst: any;
+	        pad: any;
+	        padEnd: any;
+	        padStart: any;
+	        parseInt: any;
+	        repeat: any;
+	        replace: any;
+	        snakeCase: any;
+	        split: any;
+	        startCase: any;
+	        startsWith: any;
+	        template: any;
+	        toLower: any;
+	        toUpper: any;
+	        trim: any;
+	        trimEnd: any;
+	        trimStart: any;
+	        truncate: any;
+	        unescape: any;
+	        upperCase: any;
+	        upperFirst: any;
+	        words: any;
 	    };
 	    static readonly Collection: {
-	        countBy: {
-	            <T>(collection: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): _.Dictionary<number>;
-	            <T extends object>(collection: T | null | undefined, iteratee?: string | [string, any] | ((value: T[keyof T]) => _.NotVoid) | _.PartialDeep<T[keyof T]> | undefined): _.Dictionary<number>;
-	        };
-	        each: {
-	            <T>(collection: T[], iteratee?: _.ArrayIterator<T, any> | undefined): T[];
-	            (collection: string, iteratee?: _.StringIterator<any> | undefined): string;
-	            <T>(collection: ArrayLike<T>, iteratee?: _.ListIterator<T, any> | undefined): ArrayLike<T>;
-	            <T extends object>(collection: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T, TArray extends T[] | null | undefined>(collection: (TArray & undefined) | (TArray & null) | (TArray & T[]), iteratee?: _.ArrayIterator<T, any> | undefined): TArray;
-	            <TString extends string | null | undefined>(collection: TString, iteratee?: _.StringIterator<any> | undefined): TString;
-	            <T, TList extends ArrayLike<T> | null | undefined>(collection: (TList & undefined) | (TList & null) | (TList & ArrayLike<T>), iteratee?: _.ListIterator<T, any> | undefined): TList;
-	            <T extends object>(collection: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        eachRight: {
-	            <T>(collection: T[], iteratee?: _.ArrayIterator<T, any> | undefined): T[];
-	            (collection: string, iteratee?: _.StringIterator<any> | undefined): string;
-	            <T>(collection: ArrayLike<T>, iteratee?: _.ListIterator<T, any> | undefined): ArrayLike<T>;
-	            <T extends object>(collection: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T, TArray extends T[] | null | undefined>(collection: (TArray & undefined) | (TArray & null) | (TArray & T[]), iteratee?: _.ArrayIterator<T, any> | undefined): TArray;
-	            <TString extends string | null | undefined>(collection: TString, iteratee?: _.StringIterator<any> | undefined): TString;
-	            <T, TList extends ArrayLike<T> | null | undefined>(collection: (TList & undefined) | (TList & null) | (TList & ArrayLike<T>), iteratee?: _.ListIterator<T, any> | undefined): TList;
-	            <T extends object>(collection: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        every: {
-	            <T>(collection: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined): boolean;
-	            <T extends object>(collection: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, boolean> | _.PartialDeep<T[keyof T]> | undefined): boolean;
-	        };
-	        filter: {
-	            (collection: string | null | undefined, predicate?: _.StringIterator<boolean> | undefined): string[];
-	            <T, S extends T>(collection: ArrayLike<T> | null | undefined, predicate: _.ListIteratorTypeGuard<T, S>): S[];
-	            <T>(collection: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined): T[];
-	            <T extends object, S extends T[keyof T]>(collection: T | null | undefined, predicate: _.ObjectIteratorTypeGuard<T, S>): S[];
-	            <T extends object>(collection: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, boolean> | _.PartialDeep<T[keyof T]> | undefined): T[keyof T][];
-	        };
-	        find: {
-	            <T, S extends T>(collection: ArrayLike<T> | null | undefined, predicate: _.ListIteratorTypeGuard<T, S>, fromIndex?: number | undefined): S | undefined;
-	            <T>(collection: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined, fromIndex?: number | undefined): T | undefined;
-	            <T extends object, S extends T[keyof T]>(collection: T | null | undefined, predicate: _.ObjectIteratorTypeGuard<T, S>, fromIndex?: number | undefined): S | undefined;
-	            <T extends object>(collection: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, boolean> | _.PartialDeep<T[keyof T]> | undefined, fromIndex?: number | undefined): T[keyof T] | undefined;
-	        };
-	        findLast: {
-	            <T, S extends T>(collection: ArrayLike<T> | null | undefined, predicate: _.ListIteratorTypeGuard<T, S>, fromIndex?: number | undefined): S | undefined;
-	            <T>(collection: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined, fromIndex?: number | undefined): T | undefined;
-	            <T extends object, S extends T[keyof T]>(collection: T | null | undefined, predicate: _.ObjectIteratorTypeGuard<T, S>, fromIndex?: number | undefined): S | undefined;
-	            <T extends object>(collection: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, boolean> | _.PartialDeep<T[keyof T]> | undefined, fromIndex?: number | undefined): T[keyof T] | undefined;
-	        };
-	        flatMap: {
-	            <T>(collection: ArrayLike<_.Many<T>> | _.Dictionary<_.Many<T>> | _.NumericDictionary<_.Many<T>> | null | undefined): T[];
-	            (collection: object | null | undefined): any[];
-	            <T, TResult>(collection: ArrayLike<T> | null | undefined, iteratee: _.ListIterator<T, _.Many<TResult>>): TResult[];
-	            <T extends object, TResult>(collection: T | null | undefined, iteratee: _.ObjectIterator<T, _.Many<TResult>>): TResult[];
-	            (collection: object | null | undefined, iteratee: string): any[];
-	            (collection: object | null | undefined, iteratee: object): boolean[];
-	        };
-	        flatMapDeep: {
-	            <T>(collection: ArrayLike<T | _.ListOfRecursiveArraysOrValues<T>> | _.Dictionary<T | _.ListOfRecursiveArraysOrValues<T>> | _.NumericDictionary<T | _.ListOfRecursiveArraysOrValues<T>> | null | undefined): T[];
-	            <T, TResult>(collection: ArrayLike<T> | null | undefined, iteratee: _.ListIterator<T, TResult | _.ListOfRecursiveArraysOrValues<TResult>>): TResult[];
-	            <T extends object, TResult>(collection: T | null | undefined, iteratee: _.ObjectIterator<T, TResult | _.ListOfRecursiveArraysOrValues<TResult>>): TResult[];
-	            (collection: object | null | undefined, iteratee: string): any[];
-	            (collection: object | null | undefined, iteratee: object): boolean[];
-	        };
-	        flatMapDepth: {
-	            <T>(collection: ArrayLike<T | _.ListOfRecursiveArraysOrValues<T>> | _.Dictionary<T | _.ListOfRecursiveArraysOrValues<T>> | _.NumericDictionary<T | _.ListOfRecursiveArraysOrValues<T>> | null | undefined): T[];
-	            <T, TResult>(collection: ArrayLike<T> | null | undefined, iteratee: _.ListIterator<T, TResult | _.ListOfRecursiveArraysOrValues<TResult>>, depth?: number | undefined): TResult[];
-	            <T extends object, TResult>(collection: T | null | undefined, iteratee: _.ObjectIterator<T, TResult | _.ListOfRecursiveArraysOrValues<TResult>>, depth?: number | undefined): TResult[];
-	            (collection: object | null | undefined, iteratee: string, depth?: number | undefined): any[];
-	            (collection: object | null | undefined, iteratee: object, depth?: number | undefined): boolean[];
-	        };
-	        forEach: {
-	            <T>(collection: T[], iteratee?: _.ArrayIterator<T, any> | undefined): T[];
-	            (collection: string, iteratee?: _.StringIterator<any> | undefined): string;
-	            <T>(collection: ArrayLike<T>, iteratee?: _.ListIterator<T, any> | undefined): ArrayLike<T>;
-	            <T extends object>(collection: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T, TArray extends T[] | null | undefined>(collection: (TArray & undefined) | (TArray & null) | (TArray & T[]), iteratee?: _.ArrayIterator<T, any> | undefined): TArray;
-	            <TString extends string | null | undefined>(collection: TString, iteratee?: _.StringIterator<any> | undefined): TString;
-	            <T, TList extends ArrayLike<T> | null | undefined>(collection: (TList & undefined) | (TList & null) | (TList & ArrayLike<T>), iteratee?: _.ListIterator<T, any> | undefined): TList;
-	            <T extends object>(collection: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        forEachRight: {
-	            <T>(collection: T[], iteratee?: _.ArrayIterator<T, any> | undefined): T[];
-	            (collection: string, iteratee?: _.StringIterator<any> | undefined): string;
-	            <T>(collection: ArrayLike<T>, iteratee?: _.ListIterator<T, any> | undefined): ArrayLike<T>;
-	            <T extends object>(collection: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T, TArray extends T[] | null | undefined>(collection: (TArray & undefined) | (TArray & null) | (TArray & T[]), iteratee?: _.ArrayIterator<T, any> | undefined): TArray;
-	            <TString extends string | null | undefined>(collection: TString, iteratee?: _.StringIterator<any> | undefined): TString;
-	            <T, TList extends ArrayLike<T> | null | undefined>(collection: (TList & undefined) | (TList & null) | (TList & ArrayLike<T>), iteratee?: _.ListIterator<T, any> | undefined): TList;
-	            <T extends object>(collection: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        groupBy: {
-	            <T>(collection: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): _.Dictionary<T[]>;
-	            <T extends object>(collection: T | null | undefined, iteratee?: string | [string, any] | ((value: T[keyof T]) => _.NotVoid) | _.PartialDeep<T[keyof T]> | undefined): _.Dictionary<T[keyof T][]>;
-	        };
-	        includes: <T>(collection: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, target: T, fromIndex?: number | undefined) => boolean;
-	        invokeMap: {
-	            (collection: object | null | undefined, methodName: string, ...args: any[]): any[];
-	            <TResult>(collection: object | null | undefined, method: (...args: any[]) => TResult, ...args: any[]): TResult[];
-	        };
-	        keyBy: {
-	            <T>(collection: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | ((value: T) => PropertyKey) | _.PartialDeep<T> | undefined): _.Dictionary<T>;
-	            <T extends object>(collection: T | null | undefined, iteratee?: string | [string, any] | ((value: T[keyof T]) => PropertyKey) | _.PartialDeep<T[keyof T]> | undefined): _.Dictionary<T[keyof T]>;
-	        };
-	        map: {
-	            <T, TResult>(collection: T[] | null | undefined, iteratee: _.ArrayIterator<T, TResult>): TResult[];
-	            <T, TResult>(collection: ArrayLike<T> | null | undefined, iteratee: _.ListIterator<T, TResult>): TResult[];
-	            <T>(collection: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined): T[];
-	            <T extends object, TResult>(collection: T | null | undefined, iteratee: _.ObjectIterator<T, TResult>): TResult[];
-	            <T, K extends keyof T>(collection: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, iteratee: K): T[K][];
-	            <T>(collection: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, iteratee?: string | undefined): any[];
-	            <T>(collection: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, iteratee?: object | undefined): boolean[];
-	        };
-	        orderBy: {
-	            <T>(collection: ArrayLike<T> | null | undefined, iteratees?: _.ListIterator<T, _.NotVoid> | _.ListIterator<T, _.NotVoid>[] | undefined, orders?: string | boolean | (string | boolean)[] | undefined): T[];
-	            <T>(collection: ArrayLike<T> | null | undefined, iteratees?: string | [string, any] | _.ListIterator<T, _.NotVoid> | _.PartialDeep<T> | _.ListIteratee<T>[] | undefined, orders?: string | boolean | (string | boolean)[] | undefined): T[];
-	            <T extends object>(collection: T | null | undefined, iteratees?: _.ObjectIterator<T, _.NotVoid> | _.ObjectIterator<T, _.NotVoid>[] | undefined, orders?: string | boolean | (string | boolean)[] | undefined): T[keyof T][];
-	            <T extends object>(collection: T | null | undefined, iteratees?: string | [string, any] | _.ObjectIterator<T, _.NotVoid> | _.PartialDeep<T[keyof T]> | _.ObjectIteratee<T>[] | undefined, orders?: string | boolean | (string | boolean)[] | undefined): T[keyof T][];
-	        };
-	        partition: {
-	            <T>(collection: ArrayLike<T> | null | undefined, callback: _.ValueIteratee<T>): [T[], T[]];
-	            <T extends object>(collection: T | null | undefined, callback: _.ValueIteratee<T[keyof T]>): [T[keyof T][], T[keyof T][]];
-	        };
-	        reduce: {
-	            <T, TResult>(collection: T[] | null | undefined, callback: _.MemoListIterator<T, TResult, T[]>, accumulator: TResult): TResult;
-	            <T, TResult>(collection: ArrayLike<T> | null | undefined, callback: _.MemoListIterator<T, TResult, ArrayLike<T>>, accumulator: TResult): TResult;
-	            <T extends object, TResult>(collection: T | null | undefined, callback: _.MemoObjectIterator<T[keyof T], TResult, T>, accumulator: TResult): TResult;
-	            <T>(collection: T[] | null | undefined, callback: _.MemoListIterator<T, T, T[]>): T | undefined;
-	            <T>(collection: ArrayLike<T> | null | undefined, callback: _.MemoListIterator<T, T, ArrayLike<T>>): T | undefined;
-	            <T extends object>(collection: T | null | undefined, callback: _.MemoObjectIterator<T[keyof T], T[keyof T], T>): T[keyof T] | undefined;
-	        };
-	        reduceRight: {
-	            <T, TResult>(collection: T[] | null | undefined, callback: _.MemoListIterator<T, TResult, T[]>, accumulator: TResult): TResult;
-	            <T, TResult>(collection: ArrayLike<T> | null | undefined, callback: _.MemoListIterator<T, TResult, ArrayLike<T>>, accumulator: TResult): TResult;
-	            <T extends object, TResult>(collection: T | null | undefined, callback: _.MemoObjectIterator<T[keyof T], TResult, T>, accumulator: TResult): TResult;
-	            <T>(collection: T[] | null | undefined, callback: _.MemoListIterator<T, T, T[]>): T | undefined;
-	            <T>(collection: ArrayLike<T> | null | undefined, callback: _.MemoListIterator<T, T, ArrayLike<T>>): T | undefined;
-	            <T extends object>(collection: T | null | undefined, callback: _.MemoObjectIterator<T[keyof T], T[keyof T], T>): T[keyof T] | undefined;
-	        };
-	        reject: {
-	            (collection: string | null | undefined, predicate?: _.StringIterator<boolean> | undefined): string[];
-	            <T>(collection: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined): T[];
-	            <T extends object>(collection: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, boolean> | _.PartialDeep<T[keyof T]> | undefined): T[keyof T][];
-	        };
-	        sample: {
-	            <T>(collection: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined): T | undefined;
-	            <T extends object>(collection: T | null | undefined): T[keyof T] | undefined;
-	        };
-	        sampleSize: {
-	            <T>(collection: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, n?: number | undefined): T[];
-	            <T extends object>(collection: T | null | undefined, n?: number | undefined): T[keyof T][];
-	        };
-	        shuffle: {
-	            <T>(collection: ArrayLike<T> | null | undefined): T[];
-	            <T extends object>(collection: T | null | undefined): T[keyof T][];
-	        };
-	        size: (collection: string | object | null | undefined) => number;
-	        some: {
-	            <T>(collection: ArrayLike<T> | null | undefined, predicate?: string | [string, any] | _.ListIterator<T, boolean> | _.PartialDeep<T> | undefined): boolean;
-	            <T extends object>(collection: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, boolean> | _.PartialDeep<T[keyof T]> | undefined): boolean;
-	        };
-	        sortBy: {
-	            <T>(collection: ArrayLike<T> | null | undefined, ...iteratees: _.Many<_.ListIteratee<T>>[]): T[];
-	            <T extends object>(collection: T | null | undefined, ...iteratees: _.Many<_.ObjectIteratee<T>>[]): T[keyof T][];
-	        };
+	        countBy: any;
+	        each: any;
+	        eachRight: any;
+	        every: any;
+	        filter: any;
+	        find: any;
+	        findLast: any;
+	        flatMap: any;
+	        flatMapDeep: any;
+	        flatMapDepth: any;
+	        forEach: any;
+	        forEachRight: any;
+	        groupBy: any;
+	        includes: any;
+	        invokeMap: any;
+	        keyBy: any;
+	        map: any;
+	        orderBy: any;
+	        partition: any;
+	        reduce: any;
+	        reduceRight: any;
+	        reject: any;
+	        sample: any;
+	        sampleSize: any;
+	        shuffle: any;
+	        size: any;
+	        some: any;
+	        sortBy: any;
 	    };
 	    static readonly Function: {
-	        after: <TFunc extends (...args: any[]) => any>(n: number, func: TFunc) => TFunc;
-	        ary: (func: (...args: any[]) => any, n?: number | undefined) => (...args: any[]) => any;
-	        before: <TFunc extends (...args: any[]) => any>(n: number, func: TFunc) => TFunc;
-	        bind: _.FunctionBind;
-	        bindKey: _.FunctionBindKey;
-	        curry: _.Curry;
-	        curryRight: _.CurryRight;
-	        debounce: <T extends (...args: any[]) => any>(func: T, wait?: number | undefined, options?: _.DebounceSettings | undefined) => T & _.Cancelable;
-	        defer: (func: (...args: any[]) => any, ...args: any[]) => number;
-	        delay: (func: (...args: any[]) => any, wait: number, ...args: any[]) => number;
-	        flip: <T extends (...args: any[]) => any>(func: T) => T;
-	        memoize: {
-	            <T extends (...args: any[]) => any>(func: T, resolver?: ((...args: any[]) => any) | undefined): T & _.MemoizedFunction;
-	            Cache: _.MapCacheConstructor;
-	        };
-	        negate: <T extends (...args: any[]) => any>(predicate: T) => T;
-	        once: <T extends (...args: any[]) => any>(func: T) => T;
-	        overArgs: (func: (...args: any[]) => any, ...transforms: _.Many<(...args: any[]) => any>[]) => (...args: any[]) => any;
-	        partial: _.Partial;
-	        partialRight: _.PartialRight;
-	        rearg: (func: (...args: any[]) => any, ...indexes: _.Many<number>[]) => (...args: any[]) => any;
-	        rest: (func: (...args: any[]) => any, start?: number | undefined) => (...args: any[]) => any;
-	        spread: {
-	            <TResult>(func: (...args: any[]) => TResult): (...args: any[]) => TResult;
-	            <TResult>(func: (...args: any[]) => TResult, start: number): (...args: any[]) => TResult;
-	        };
-	        throttle: <T extends (...args: any[]) => any>(func: T, wait?: number | undefined, options?: _.ThrottleSettings | undefined) => T & _.Cancelable;
-	        unary: <T, TResult>(func: (arg1: T, ...args: any[]) => TResult) => (arg1: T) => TResult;
-	        wrap: {
-	            <T, TArgs, TResult>(value: T, wrapper: (value: T, ...args: TArgs[]) => TResult): (...args: TArgs[]) => TResult;
-	            <T, TResult>(value: T, wrapper: (value: T, ...args: any[]) => TResult): (...args: any[]) => TResult;
-	        };
+	        after: any;
+	        ary: any;
+	        before: any;
+	        bind: any;
+	        bindKey: any;
+	        curry: any;
+	        curryRight: any;
+	        debounce: any;
+	        defer: any;
+	        delay: any;
+	        flip: any;
+	        memoize: any;
+	        negate: any;
+	        once: any;
+	        overArgs: any;
+	        partial: any;
+	        partialRight: any;
+	        rearg: any;
+	        rest: any;
+	        spread: any;
+	        throttle: any;
+	        unary: any;
+	        wrap: any;
 	    };
 	    static readonly Object: {
-	        assign: {
-	            <TObject, TSource>(object: TObject, source: TSource): TObject & TSource;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2): TObject & TSource1 & TSource2;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3): TObject & TSource1 & TSource2 & TSource3;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4): TObject & TSource1 & TSource2 & TSource3 & TSource4;
-	            <TObject>(object: TObject): TObject;
-	            (object: any, ...otherArgs: any[]): any;
-	        };
-	        assignIn: {
-	            <TObject, TSource>(object: TObject, source: TSource): TObject & TSource;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2): TObject & TSource1 & TSource2;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3): TObject & TSource1 & TSource2 & TSource3;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4): TObject & TSource1 & TSource2 & TSource3 & TSource4;
-	            <TObject>(object: TObject): TObject;
-	            <TResult>(object: any, ...otherArgs: any[]): TResult;
-	        };
-	        assignInWith: {
-	            <TObject, TSource>(object: TObject, source: TSource, customizer: _.AssignCustomizer): TObject & TSource;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2, customizer: _.AssignCustomizer): TObject & TSource1 & TSource2;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, customizer: _.AssignCustomizer): TObject & TSource1 & TSource2 & TSource3;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4, customizer: _.AssignCustomizer): TObject & TSource1 & TSource2 & TSource3 & TSource4;
-	            <TObject>(object: TObject): TObject;
-	            <TResult>(object: any, ...otherArgs: any[]): TResult;
-	        };
-	        assignWith: {
-	            <TObject, TSource>(object: TObject, source: TSource, customizer: _.AssignCustomizer): TObject & TSource;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2, customizer: _.AssignCustomizer): TObject & TSource1 & TSource2;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, customizer: _.AssignCustomizer): TObject & TSource1 & TSource2 & TSource3;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4, customizer: _.AssignCustomizer): TObject & TSource1 & TSource2 & TSource3 & TSource4;
-	            <TObject>(object: TObject): TObject;
-	            <TResult>(object: any, ...otherArgs: any[]): TResult;
-	        };
-	        at: {
-	            <T>(object: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, ...props: _.Many<PropertyKey>[]): T[];
-	            <T extends object>(object: T | null | undefined, ...props: _.Many<keyof T>[]): T[keyof T][];
-	        };
-	        create: <T extends object, U extends object>(prototype: T, properties?: U | undefined) => T & U;
-	        defaults: {
-	            <TObject, TSource>(object: TObject, source: TSource): TSource & TObject;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2): TSource2 & TSource1 & TObject;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3): TSource3 & TSource2 & TSource1 & TObject;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4): TSource4 & TSource3 & TSource2 & TSource1 & TObject;
-	            <TObject>(object: TObject): TObject;
-	            (object: any, ...sources: any[]): any;
-	        };
-	        defaultsDeep: (object: any, ...sources: any[]) => any;
-	        entries: {
-	            <T>(object?: _.Dictionary<T> | _.NumericDictionary<T> | undefined): [string, T][];
-	            (object?: object | undefined): [string, any][];
-	        };
-	        entriesIn: {
-	            <T>(object?: _.Dictionary<T> | _.NumericDictionary<T> | undefined): [string, T][];
-	            (object?: object | undefined): [string, any][];
-	        };
-	        extend: {
-	            <TObject, TSource>(object: TObject, source: TSource): TObject & TSource;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2): TObject & TSource1 & TSource2;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3): TObject & TSource1 & TSource2 & TSource3;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4): TObject & TSource1 & TSource2 & TSource3 & TSource4;
-	            <TObject>(object: TObject): TObject;
-	            <TResult>(object: any, ...otherArgs: any[]): TResult;
-	        };
-	        findKey: <T>(object: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, _.NotVoid> | _.PartialDeep<T[keyof T]> | undefined) => string | undefined;
-	        findLastKey: <T>(object: T | null | undefined, predicate?: string | [string, any] | _.ObjectIterator<T, _.NotVoid> | _.PartialDeep<T[keyof T]> | undefined) => string | undefined;
-	        forIn: {
-	            <T>(object: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T>(object: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        forInRight: {
-	            <T>(object: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T>(object: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        forOwn: {
-	            <T>(object: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T>(object: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        forOwnRight: {
-	            <T>(object: T, iteratee?: _.ObjectIterator<T, any> | undefined): T;
-	            <T>(object: T | null | undefined, iteratee?: _.ObjectIterator<T, any> | undefined): T | null | undefined;
-	        };
-	        functions: (object: any) => string[];
-	        functionsIn: <T extends {}>(object: any) => string[];
-	        get: {
-	            <TObject extends object, TKey extends keyof TObject>(object: TObject, path: TKey | [TKey]): TObject[TKey];
-	            <TObject extends object, TKey extends keyof TObject>(object: TObject | null | undefined, path: TKey | [TKey]): TObject[TKey] | undefined;
-	            <TObject extends object, TKey extends keyof TObject, TDefault>(object: TObject | null | undefined, path: TKey | [TKey], defaultValue: TDefault): TDefault | TObject[TKey];
-	            <T>(object: _.NumericDictionary<T>, path: number): T;
-	            <T>(object: _.NumericDictionary<T> | null | undefined, path: number): T | undefined;
-	            <T, TDefault>(object: _.NumericDictionary<T> | null | undefined, path: number, defaultValue: TDefault): T | TDefault;
-	            <TDefault>(object: null | undefined, path: _.Many<PropertyKey>, defaultValue: TDefault): TDefault;
-	            (object: null | undefined, path: _.Many<PropertyKey>): undefined;
-	            (object: any, path: _.Many<PropertyKey>, defaultValue?: any): any;
-	        };
-	        has: <T>(object: T, path: _.Many<PropertyKey>) => boolean;
-	        hasIn: <T>(object: T, path: _.Many<PropertyKey>) => boolean;
-	        invert: (object: object) => _.Dictionary<string>;
-	        invertBy: {
-	            <T>(object: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, interatee?: string | [string, any] | ((value: T) => _.NotVoid) | _.PartialDeep<T> | undefined): _.Dictionary<string[]>;
-	            <T extends object>(object: T | null | undefined, interatee?: string | [string, any] | ((value: T[keyof T]) => _.NotVoid) | _.PartialDeep<T[keyof T]> | undefined): _.Dictionary<string[]>;
-	        };
-	        invoke: (object: any, path: _.Many<PropertyKey>, ...args: any[]) => any;
-	        keys: (object?: any) => string[];
-	        keysIn: (object?: any) => string[];
-	        mapKeys: {
-	            <T>(object: ArrayLike<T> | null | undefined, iteratee?: string | [string, any] | _.ListIterator<T, _.NotVoid> | _.PartialDeep<T> | undefined): _.Dictionary<T>;
-	            <T extends object>(object: T | null | undefined, iteratee?: string | [string, any] | _.ObjectIterator<T, _.NotVoid> | _.PartialDeep<T[keyof T]> | undefined): _.Dictionary<T[keyof T]>;
-	        };
-	        mapValues: {
-	            <TResult>(obj: string | null | undefined, callback: _.StringIterator<TResult>): _.NumericDictionary<TResult>;
-	            <T, TResult>(obj: _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, callback: _.ObjectIterator<_.Dictionary<T>, TResult>): _.Dictionary<TResult>;
-	            <T extends object, TResult>(obj: T | null | undefined, callback: _.ObjectIterator<T, TResult>): { [P in keyof T]: TResult; };
-	            <T>(obj: _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, iteratee: object): _.Dictionary<boolean>;
-	            <T extends object>(obj: T | null | undefined, iteratee: object): { [P in keyof T]: boolean; };
-	            <T, TKey extends keyof T>(obj: _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, iteratee: TKey): _.Dictionary<T[TKey]>;
-	            <T>(obj: _.Dictionary<T> | _.NumericDictionary<T> | null | undefined, iteratee: string): _.Dictionary<any>;
-	            <T extends object>(obj: T | null | undefined, iteratee: string): { [P in keyof T]: any; };
-	            (obj: string | null | undefined): _.NumericDictionary<string>;
-	            <T>(obj: _.Dictionary<T> | _.NumericDictionary<T> | null | undefined): _.Dictionary<T>;
-	            <T extends object>(obj: T): T;
-	            <T extends object>(obj: T | null | undefined): Partial<T>;
-	        };
-	        merge: {
-	            <TObject, TSource>(object: TObject, source: TSource): TObject & TSource;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2): TObject & TSource1 & TSource2;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3): TObject & TSource1 & TSource2 & TSource3;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4): TObject & TSource1 & TSource2 & TSource3 & TSource4;
-	            (object: any, ...otherArgs: any[]): any;
-	        };
-	        mergeWith: {
-	            <TObject, TSource>(object: TObject, source: TSource, customizer: (value: any, srcValue: any, key: string, object: any, source: any) => any): TObject & TSource;
-	            <TObject, TSource1, TSource2>(object: TObject, source1: TSource1, source2: TSource2, customizer: (value: any, srcValue: any, key: string, object: any, source: any) => any): TObject & TSource1 & TSource2;
-	            <TObject, TSource1, TSource2, TSource3>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, customizer: (value: any, srcValue: any, key: string, object: any, source: any) => any): TObject & TSource1 & TSource2 & TSource3;
-	            <TObject, TSource1, TSource2, TSource3, TSource4>(object: TObject, source1: TSource1, source2: TSource2, source3: TSource3, source4: TSource4, customizer: (value: any, srcValue: any, key: string, object: any, source: any) => any): TObject & TSource1 & TSource2 & TSource3 & TSource4;
-	            (object: any, ...otherArgs: any[]): any;
-	        };
-	        omit: {
-	            <T extends _.AnyKindOfDictionary>(object: T | null | undefined, ...paths: _.Many<PropertyKey>[]): T;
-	            <T extends object, K extends keyof T>(object: T | null | undefined, ...paths: _.Many<K>[]): Pick<T, ({ [P in keyof T]: P; } & { [P in K]: never; } & {
-	                [x: string]: never;
-	            })[keyof T]>;
-	            <T extends object>(object: T | null | undefined, ...paths: _.Many<PropertyKey>[]): Partial<T>;
-	        };
-	        omitBy: <T extends object>(object: T | null | undefined, predicate: _.ValueKeyIteratee<T[keyof T]>) => Partial<T>;
-	        pick: {
-	            <T extends object, U extends keyof T>(object: T, ...props: _.Many<U>[]): Pick<T, U>;
-	            <T>(object: T | null | undefined, ...props: _.Many<PropertyKey>[]): _.PartialDeep<T>;
-	        };
-	        pickBy: <T extends object>(object: T | null | undefined, predicate?: string | [string, any] | ((value: T[keyof T], key: string) => _.NotVoid) | _.PartialDeep<T[keyof T]> | undefined) => Partial<T>;
-	        result: <TResult>(object: any, path: _.Many<PropertyKey>, defaultValue?: TResult | ((...args: any[]) => TResult) | undefined) => TResult;
-	        set: {
-	            <T extends object>(object: T, path: _.Many<PropertyKey>, value: any): T;
-	            <TResult>(object: object, path: _.Many<PropertyKey>, value: any): TResult;
-	        };
-	        setWith: {
-	            <T extends object>(object: T, path: _.Many<PropertyKey>, value: any, customizer?: _.SetWithCustomizer<T> | undefined): T;
-	            <T extends object, TResult>(object: T, path: _.Many<PropertyKey>, value: any, customizer?: _.SetWithCustomizer<T> | undefined): TResult;
-	        };
-	        toPairs: {
-	            <T>(object?: _.Dictionary<T> | _.NumericDictionary<T> | undefined): [string, T][];
-	            (object?: object | undefined): [string, any][];
-	        };
-	        toPairsIn: {
-	            <T>(object?: _.Dictionary<T> | _.NumericDictionary<T> | undefined): [string, T][];
-	            (object?: object | undefined): [string, any][];
-	        };
-	        transform: {
-	            <T, TResult>(object: T[], iteratee: _.MemoVoidArrayIterator<T, TResult[]>, accumulator?: TResult[] | undefined): TResult[];
-	            <T, TResult>(object: T[], iteratee: _.MemoVoidArrayIterator<T, _.Dictionary<TResult>>, accumulator: _.Dictionary<TResult>): _.Dictionary<TResult>;
-	            <T, TResult>(object: _.Dictionary<T>, iteratee: _.MemoVoidDictionaryIterator<T, _.Dictionary<TResult>>, accumulator?: _.Dictionary<TResult> | undefined): _.Dictionary<TResult>;
-	            <T, TResult>(object: _.Dictionary<T>, iteratee: _.MemoVoidDictionaryIterator<T, TResult[]>, accumulator: TResult[]): TResult[];
-	            (object: any[]): any[];
-	            (object: object): _.Dictionary<any>;
-	        };
-	        unset: (object: any, path: _.Many<PropertyKey>) => boolean;
-	        update: (object: object, path: _.Many<PropertyKey>, updater: (value: any) => any) => any;
-	        updateWith: {
-	            <T extends object>(object: T, path: _.Many<PropertyKey>, updater: (oldValue: any) => any, customizer?: _.SetWithCustomizer<T> | undefined): T;
-	            <T extends object, TResult>(object: T, path: _.Many<PropertyKey>, updater: (oldValue: any) => any, customizer?: _.SetWithCustomizer<T> | undefined): TResult;
-	        };
-	        values: {
-	            <T>(object: _.Dictionary<T> | _.NumericDictionary<T> | ArrayLike<T> | null | undefined): T[];
-	            <T extends object>(object: T | null | undefined): T[keyof T][];
-	            (object: any): any[];
-	        };
-	        valuesIn: {
-	            <T>(object: _.Dictionary<T> | _.NumericDictionary<T> | ArrayLike<T> | null | undefined): T[];
-	            <T extends object>(object: T | null | undefined): T[keyof T][];
-	        };
+	        assign: any;
+	        assignIn: any;
+	        assignInWith: any;
+	        assignWith: any;
+	        at: any;
+	        create: any;
+	        defaults: any;
+	        defaultsDeep: any;
+	        entries: any;
+	        entriesIn: any;
+	        extend: any;
+	        findKey: any;
+	        findLastKey: any;
+	        forIn: any;
+	        forInRight: any;
+	        forOwn: any;
+	        forOwnRight: any;
+	        functions: any;
+	        functionsIn: any;
+	        get: any;
+	        has: any;
+	        hasIn: any;
+	        invert: any;
+	        invertBy: any;
+	        invoke: any;
+	        keys: any;
+	        keysIn: any;
+	        mapKeys: any;
+	        mapValues: any;
+	        merge: any;
+	        mergeWith: any;
+	        omit: any;
+	        omitBy: any;
+	        pick: any;
+	        pickBy: any;
+	        result: any;
+	        set: any;
+	        setWith: any;
+	        toPairs: any;
+	        toPairsIn: any;
+	        transform: any;
+	        unset: any;
+	        update: any;
+	        updateWith: any;
+	        values: any;
+	        valuesIn: any;
 	    };
 	    static readonly Lang: {
-	        castArray: <T>(value?: T | T[] | undefined) => T[];
-	        clone: <T>(value: T) => T;
-	        cloneDeep: <T>(value: T) => T;
-	        cloneDeepWith: {
-	            <T>(value: T, customizer: _.CloneDeepWithCustomizer<T>): any;
-	            <T>(value: T): T;
-	        };
-	        cloneWith: {
-	            <T, TResult extends string | number | boolean | object | null>(value: T, customizer: _.CloneWithCustomizer<T, TResult>): TResult;
-	            <T, TResult>(value: T, customizer: _.CloneWithCustomizer<T, TResult | undefined>): T | TResult;
-	            <T>(value: T): T;
-	        };
-	        conformsTo: <T>(object: T, source: _.ConformsPredicateObject<T>) => boolean;
-	        eq: (value: any, other: any) => boolean;
-	        gt: (value: any, other: any) => boolean;
-	        gte: (value: any, other: any) => boolean;
-	        isArguments: (value?: any) => value is IArguments;
-	        isArray: {
-	            (value?: any): value is any[];
-	            <T>(value?: any): value is any[];
-	        };
-	        isArrayBuffer: (value?: any) => value is ArrayBuffer;
-	        isArrayLike: {
-	            <T>(value: T & string & number): boolean;
-	            (value: ((...args: any[]) => any) | null | undefined): value is never;
-	            (value: any): value is {
-	                length: number;
-	            };
-	        };
-	        isArrayLikeObject: {
-	            <T>(value: T & string & number): boolean;
-	            (value: string | number | boolean | Function | ((...args: any[]) => any) | null | undefined): value is never;
-	            <T extends object>(value: string | number | boolean | Function | T | ((...args: any[]) => any) | null | undefined): value is T & {
-	                length: number;
-	            };
-	        };
-	        isBoolean: (value?: any) => value is boolean;
-	        isBuffer: (value?: any) => boolean;
-	        isDate: (value?: any) => value is Date;
-	        isElement: (value?: any) => boolean;
-	        isEmpty: (value?: any) => boolean;
-	        isEqual: (value: any, other: any) => boolean;
-	        isEqualWith: (value: any, other: any, customizer?: _.IsEqualCustomizer | undefined) => boolean;
-	        isError: (value: any) => value is Error;
-	        isFinite: (value?: any) => boolean;
-	        isFunction: (value: any) => value is (...args: any[]) => any;
-	        isInteger: (value?: any) => boolean;
-	        isLength: (value?: any) => boolean;
-	        isMap: (value?: any) => value is Map<any, any>;
-	        isMatch: (object: object, source: object) => boolean;
-	        isMatchWith: (object: object, source: object, customizer: _.isMatchWithCustomizer) => boolean;
-	        isNaN: (value?: any) => boolean;
-	        isNative: (value: any) => value is (...args: any[]) => any;
-	        isNil: (value: any) => value is null | undefined;
-	        isNull: (value: any) => value is null;
-	        isNumber: (value?: any) => value is number;
-	        isObject: (value?: any) => boolean;
-	        isObjectLike: (value?: any) => boolean;
-	        isPlainObject: (value?: any) => boolean;
-	        isRegExp: (value?: any) => value is RegExp;
-	        isSafeInteger: (value: any) => boolean;
-	        isSet: (value?: any) => value is Set<any>;
-	        isString: (value?: any) => value is string;
-	        isSymbol: (value: any) => boolean;
-	        isTypedArray: (value: any) => boolean;
-	        isUndefined: (value: any) => value is undefined;
-	        isWeakMap: (value?: any) => value is WeakMap<object, any>;
-	        isWeakSet: (value?: any) => value is WeakSet<object>;
-	        lt: (value: any, other: any) => boolean;
-	        lte: (value: any, other: any) => boolean;
-	        toArray: {
-	            <T>(value: ArrayLike<T> | _.Dictionary<T> | _.NumericDictionary<T> | null | undefined): T[];
-	            <T>(value: T): T[keyof T][];
-	            (): any[];
-	        };
-	        toFinite: (value: any) => number;
-	        toInteger: (value: any) => number;
-	        toLength: (value: any) => number;
-	        toNumber: (value: any) => number;
-	        toPlainObject: (value?: any) => any;
-	        toSafeInteger: (value: any) => number;
-	        toString: (value: any) => string;
+	        castArray: any;
+	        clone: any;
+	        cloneDeep: any;
+	        cloneDeepWith: any;
+	        cloneWith: any;
+	        conformsTo: any;
+	        eq: any;
+	        gt: any;
+	        gte: any;
+	        isArguments: any;
+	        isArray: any;
+	        isArrayBuffer: any;
+	        isArrayLike: any;
+	        isArrayLikeObject: any;
+	        isBoolean: any;
+	        isBuffer: any;
+	        isDate: any;
+	        isElement: any;
+	        isEmpty: any;
+	        isEqual: any;
+	        isEqualWith: any;
+	        isError: any;
+	        isFinite: any;
+	        isFunction: any;
+	        isInteger: any;
+	        isLength: any;
+	        isMap: any;
+	        isMatch: any;
+	        isMatchWith: any;
+	        isNaN: any;
+	        isNative: any;
+	        isNil: any;
+	        isNull: any;
+	        isNumber: any;
+	        isObject: any;
+	        isObjectLike: any;
+	        isPlainObject: any;
+	        isRegExp: any;
+	        isSafeInteger: any;
+	        isSet: any;
+	        isString: any;
+	        isSymbol: any;
+	        isTypedArray: any;
+	        isUndefined: any;
+	        isWeakMap: any;
+	        isWeakSet: any;
+	        lt: any;
+	        lte: any;
+	        toArray: any;
+	        toFinite: any;
+	        toInteger: any;
+	        toLength: any;
+	        toNumber: any;
+	        toPlainObject: any;
+	        toSafeInteger: any;
+	        toString: any;
 	    };
 	    static readonly Performace: PerformanceHelper;
 	}
@@ -1274,15 +856,15 @@ export namespace AschCore
 	export interface EntityCache {
 	    models: ModelSchema<Entity>[];
 	    clear(modelName?: string): void;
-	    get<E extends object>(modelName: string, key: PrimaryKey<E>): MaybeUndefined<E>;
+	    get<E extends object>(modelName: string, key: NormalizedEntityKey<E>): MaybeUndefined<E>;
 	    getUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): MaybeUndefined<E>;
 	    existsUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): boolean;
 	    getAll<E extends object>(modelName: string, filter?: FilterFunction<E>): MaybeUndefined<E[]>;
-	    put<E extends object>(modelName: string, key: PrimaryKey<E>, entity: E): void;
-	    evit<E extends object>(modelName: string, key: PrimaryKey<E>): void;
-	    exists<E extends object>(modelName: string, key: PrimaryKey<E>): boolean;
+	    put<E extends object>(modelName: string, key: NormalizedEntityKey<E>, entity: E): void;
+	    evit<E extends object>(modelName: string, key: NormalizedEntityKey<E>): void;
+	    exists<E extends object>(modelName: string, key: NormalizedEntityKey<E>): boolean;
 	    existsModel(modelName: string): boolean;
-	    refreshCached<E extends object>(modelName: string, key: PrimaryKey<E>, modifier: PropertyValue<E>[]): boolean;
+	    refreshCached<E extends object>(modelName: string, key: NormalizedEntityKey<E>, modifier: PropertyValue<E>[]): boolean;
 	}
 	export class UniquedEntityCache implements EntityCache {
 	    constructor(log: Logger, schemas: Map<string, ModelSchema<Entity>>);
@@ -1290,25 +872,21 @@ export namespace AschCore
 	    unRegisterModel(modelName: string): void;
 	    clear(modelName?: string): void;
 	    readonly models: ModelSchema<Entity>[];
-	    get<E extends object>(modelName: string, key: PrimaryKey<E>): MaybeUndefined<E>;
+	    get<E extends object>(modelName: string, key: NormalizedEntityKey<E>): MaybeUndefined<E>;
 	    getUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): MaybeUndefined<E>;
 	    existsUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): boolean;
-	    refreshCached<E extends object>(modelName: string, key: PrimaryKey<E>, modifier: PropertyValue<E>[]): boolean;
+	    refreshCached<E extends object>(modelName: string, key: NormalizedEntityKey<E>, modifier: PropertyValue<E>[]): boolean;
 	    getAll<E extends object>(modelName: string, filter?: FilterFunction<E>): MaybeUndefined<E[]>;
-	    put<E extends object>(modelName: string, key: PrimaryKey<E>, entity: Entity): void;
-	    evit<E extends object>(modelName: string, key: PrimaryKey<E>): void;
-	    exists<E extends object>(modelName: string, key: PrimaryKey<E>): boolean;
+	    put<E extends object>(modelName: string, key: NormalizedEntityKey<E>, entity: Entity): void;
+	    evit<E extends object>(modelName: string, key: NormalizedEntityKey<E>): void;
+	    exists<E extends object>(modelName: string, key: NormalizedEntityKey<E>): boolean;
 	    existsModel(modelName: string): boolean;
 	    dumpCache(): string;
 	}
 
 	//declarations/cache/LRUEntityCache.d.ts
-	export type LRUEntityCacheOptions = {
-	    default: number;
-	    [model: string]: number | ((model: string) => number);
-	};
 	export class LRUEntityCache extends UniquedEntityCache {
-	    constructor(schemas: Map<string, ModelSchema<Entity>>, options?: LRUEntityCacheOptions);
+	    constructor(schemas: Map<string, ModelSchema<Entity>>);
 	}
 
 	//declarations/cache/NonExpiredEntityCache.d.ts
@@ -1364,54 +942,7 @@ export namespace AschCore
 	}
 
 	//declarations/memdb/Membase.d.ts
-	export type BinaryOperators = '$eq' | '$ne' | '$gt' | '$lt' | '$gte' | '$lte' | '$in' | '$nin' | '$between';
-	export type RelationOperators = '$not' | '$and' | '$or';
-	export type ValueExpression = string | number;
-	export type FieldValueExpression = {
-	    [field: string]: string | number;
-	};
-	export type FieldArrayValueExpression = {
-	    [field: string]: SimpleKey[];
-	};
-	export type ValueCompareExpression = FieldValueExpression | {
-	    [field: string]: {
-	        [oper in '$eq' | '$ne' | '$gt' | '$lt' | '$gte' | '$lte']?: ValueExpression;
-	    };
-	};
-	export type ArrayCompareExpression = FieldArrayValueExpression | {
-	    [field: string]: {
-	        [oper in '$between' | '$in' | '$nin']?: ValueExpression[];
-	    };
-	};
-	export type UniqueCondition<E> = Partial<E>;
-	export type MembaseCondition = ValueCompareExpression | ArrayCompareExpression;
-	export interface EntityIndex<E extends object> {
-	    isUnique: boolean;
-	    fields: (keyof E)[];
-	}
-	export interface EntityCollection<E extends object> {
-	    modelName: string;
-	    indexes: Iterable<EntityIndex<E>>;
-	    insert: (entity: E) => E;
-	    update: (entity: Partial<E>) => MaybeUndefined<E>;
-	    delete: (entity: NormalizedEntityKey<E>) => MaybeUndefined<E>;
-	    get: (condition: UniqueCondition<E>) => MaybeUndefined<E>;
-	    getAll: (filter?: FilterFunction<E>) => Array<E>;
-	    find: (condition: MembaseCondition) => Array<E>;
-	}
-	export interface Membase {
-	    collections: Iterable<EntityCollection<any>>;
-	    existsCollection: (name: string) => boolean;
-	    removeAllCollections: () => void;
-	    getCollection: <E extends object>(name: string) => MaybeUndefined<EntityCollection<E>>;
-	    addCollection: <E extends object>(schema: ModelSchema<E>) => EntityCollection<E>;
-	    removeCollection: (name: string) => void;
-	}
-	export class MembaseFactory {
-	    static readonly instance: MembaseFactory;
-	    createMembase(): Membase;
-	    fromModels(schemas: ModelSchema<Entity>[]): Membase;
-	}
+
 
 	//declarations/sqldb/DbConnection.d.ts
 	export type ConnectionOptions = {
@@ -1575,11 +1106,11 @@ export namespace AschCore
 	    readonly trackingEntities: Iterable<TrackingEntity<Entity>>;
 	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
 	    getConfimedChanges(): EntityChanges<Entity>[];
-	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<Versioned<E>>;
-	    trackPersistent<E extends object>(schema: ModelSchema<E>, entity: Versioned<E>): TrackingEntity<Versioned<E>>;
-	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>): void;
-	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>, modifier: Partial<E>): void;
-	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<Versioned<E>>>;
+	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<E>;
+	    trackPersistent<E extends object>(schema: ModelSchema<E>, entity: Versioned<E>): TrackingEntity<E>;
+	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>): void;
+	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>, modifier: Partial<E>): void;
+	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<E>>;
 	    acceptChanges(historyVersion: number): void;
 	    rejectChanges(): void;
 	    rollbackChanges(historyVersion: number): Promise<void>;
@@ -1637,16 +1168,16 @@ export namespace AschCore
 	export type TrackingEntityChangesItem<E extends object> = EntityChanges<E>;
 	export type TrackingEntity<E extends object> = Versioned<E>;
 	export interface EntityTracker {
-	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<Versioned<E>>;
-	    trackPersistent<E extends object>(schema: ModelSchema<E>, entityWithVersion: Versioned<E>): TrackingEntity<Versioned<E>>;
-	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>, modifier: Partial<E>): void;
-	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<Versioned<E>>): void;
+	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<E>;
+	    trackPersistent<E extends object>(schema: ModelSchema<E>, entityWithVersion: Versioned<E>): TrackingEntity<E>;
+	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>, modifier: Partial<E>): void;
+	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>): void;
 	    acceptChanges(historyVersion: number): void;
 	    rejectChanges(): void;
 	    rollbackChanges(historyVersion: number): Promise<void>;
 	    getConfimedChanges(): EntityChanges<Entity>[];
 	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
-	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<Versioned<E>>>;
+	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<E>>;
 	    isConfirming: boolean;
 	    beginConfirm(): void;
 	    confirm(): void;

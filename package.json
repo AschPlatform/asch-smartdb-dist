@@ -1,7 +1,7 @@
 {
   "name": "asch-smartdb",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Asch core component, provide ORM like interface to operate data in blockchain",
   "license": "MIT",
   "readmeFilename": "README.md",
@@ -10,13 +10,12 @@
     "email": "eagle@asch.io"
   },
   "dependencies": {
-    "better-sqlite3": "^4.1.0",
-    "change-case": "^3.0.2",
-    "json-sql": "https://github.com/AschPlatform/json-sql/tarball/master",
-    "level": "^3.0.1",
-    "level-secondary": "^1.1.1",
-    "level-sublevel": "^6.6.1",
-    "leveldown": "^3.0.2",
-    "lru-cache": "^4.1.2"
+    "better-sqlite3": "=4.1.0",
+    "json-sql": "https://github.com/AschPlatform/json-sql/tarball/v0.2.4+asch.2",
+    "level": "=3.0.1",
+    "level-secondary": "=1.1.1",
+    "level-sublevel": "=6.6.1",
+    "leveldown": "=3.0.2",
+    "lru-cache": "=4.1.2"
   }
 }
