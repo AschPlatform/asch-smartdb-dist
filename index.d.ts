@@ -18,10 +18,10 @@ export namespace AschCore
 	export type BigNumber = number;
 	export interface Transaction extends Entity {
 	    id: string;
-	    height: number;
+	    blockId: string;
 	    type: number;
 	    timestamp: number;
-	    senderPublicKey: string;
+	    senderPublicKey: Buffer;
 	    senderId: string;
 	    recipientId: string;
 	    amount: BigNumber;
@@ -33,7 +33,7 @@ export namespace AschCore
 	    message?: string;
 	}
 	export interface Block extends BlockHeader {
-	    transactions?: Array<Transaction>;
+	    transactions?: Transaction[];
 	}
 
 	//declarations/BlockCache.d.ts
@@ -44,46 +44,42 @@ export namespace AschCore
 	        min: number;
 	        max: number;
 	    };
-	    put(block: Block): void;
+	    push(block: Block): void;
 	    get(height: number): MaybeUndefined<Block>;
 	    getById(id: string): MaybeUndefined<Block>;
-	    evit(fromHeight: number, toHeight: number): void;
+	    evitUntil(minEvitHeight: number): void;
 	}
 
 	//declarations/Common.d.ts
+	export type MaybeUndefined<T> = T | undefined;
+	export type Nullable<T> = T | null | undefined;
 	export interface ObjectLiteral {
 	    [key: string]: any;
 	}
 	export type JsonObject = ObjectLiteral;
 	export type Entity = ObjectLiteral;
-	export interface KeyObject {
-	    key: string;
-	    keyJson: JsonObject;
-	}
-	export type EntityKey = string | number | KeyObject;
+	export type Property<E> = keyof E & string;
 	export type Partial<T> = {
 	    [P in keyof T]?: T[P];
 	};
 	export type ReadonlyPartial<T> = {
 	    readonly [P in keyof T]: T[P];
 	};
+	export type Minix<T1, T2> = T1 & T2;
 	export type FilterFunction<T> = (e: T) => boolean;
-	export type KeyValuePair = {
-	    key: string;
-	    value: any;
-	};
-	export type Callback<TResult> = (err: Error | null, data: TResult) => void;
+	export type Callback<TResult> = (err: Nullable<Error>, data: TResult) => void;
 	export function makeJsonObject<T>(iterable: Iterable<T>, getKey: (t: T) => string, getValue: (t: T) => any): JsonObject;
 	export function deepCopy<T>(src: T): T;
-	export function partial<T>(src: T, keysOrKeyFilter: Array<string> | ((key: string) => boolean)): Partial<T>;
+	export function partialCopy<T extends object>(src: T, keysOrKeyFilter: string[] | ((key: string) => boolean), dest?: Partial<T>): Partial<T>;
 	export function isPrimitiveKey(key: any): boolean;
+	export class NotImplementError extends Error {
+	    constructor(message?: string);
+	}
 	export class CodeContractError extends Error {
 	    constructor(message: string);
 	}
 	export type ContractCondition = boolean | (() => boolean);
 	export type ContractMessage = string | (() => string);
-	export type MaybeUndefined<T> = T | undefined;
-	export type Nullable<T> = T | null | undefined;
 	export type ContractVerifyResult = {
 	    result: boolean;
 	    message: Nullable<string>;
@@ -98,28 +94,30 @@ export namespace AschCore
 	}
 
 	//declarations/DbSession.d.ts
-	export type SaveHistoryAction = (version: number, history: Map<string, EntityChanges>) => void;
+	export interface DbSessionOptions {
+	    name?: string;
+	    maxHistoryVersionsHold?: number;
+	}
 	export class DbSession {
-	    constructor(connection: DbConnection, cacheOptions?: EntityCacheOptions, sessionName?: string);
+	    constructor(connection: DbConnection, onLoadHistory: Nullable<LoadChangesHistoryAction>, sessionOptions: DbSessionOptions);
 	    readonly isOpen: boolean;
-	    readonly entityCache: EntityCache;
-	    syncSchema(schema: ModelSchema): void;
-	    registerSchema(...schemas: Array<ModelSchema>): void;
+	    syncSchema<E extends object>(schema: ModelSchema<E>): void;
+	    updateSchema<E extends object>(schema: ModelSchema<E>): Promise<void>;
+	    registerSchema(...schemas: ModelSchema<Entity>[]): void;
 	    close(): Promise<void>;
-	    initRecentHistory(history: Map<number, Array<EntityChangesItem>>): void;
-	    attachHistory(history: Map<number, Array<EntityChangesItem>>): void;
-	    getAllCached<TEntity>(model: ModelNameOrType<TEntity>, filter?: FilterFunction<TEntity>): Array<TEntity>;
-	    attach<TEntity>(schema: ModelSchema, key: EntityKey): MaybeUndefined<TEntity>;
-	    getAll<TEntity>(model: ModelNameOrType<TEntity>, track?: boolean): Promise<Array<TEntity>>;
-	    getMany<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition, track?: boolean, cache?: boolean): Promise<Array<TEntity>>;
-	    query<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, fields?: Array<string>, join?: JsonObject): Promise<Array<TEntity>>;
-	    queryByJson<TEntity>(model: ModelNameOrType<TEntity>, params: JsonObject): Promise<Array<TEntity>>;
-	    exists<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition): Promise<boolean>;
-	    count<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition): Promise<number>;
-	    create<TEntity>(model: ModelNameOrType<TEntity>, key: EntityKey, entity?: TEntity): TEntity;
-	    load<TEntity>(model: ModelNameOrType<TEntity>, key: EntityKey): Promise<MaybeUndefined<TEntity>>;
-	    getChanges(): Array<EntityChangesItem>;
-	    loadCached<TEntity>(model: ModelNameOrType<TEntity>, key: EntityKey, track?: boolean): MaybeUndefined<TEntity>;
+	    getAll<E extends object>(schema: ModelSchema<E>, filter?: FilterFunction<E>): E[];
+	    loadAll<E extends object>(schema: ModelSchema<E>): E[];
+	    getMany<E extends object>(schema: ModelSchema<E>, condition: SqlCondition, cache?: boolean): Promise<E[]>;
+	    query<E extends object>(schema: ModelSchema<E>, condition: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, fields?: string[], join?: JsonObject): Promise<E[]>;
+	    queryByJson<E extends object>(schema: ModelSchema<E>, params: JsonObject): Promise<E[]>;
+	    exists<E extends object>(schema: ModelSchema<E>, condition: SqlCondition): Promise<boolean>;
+	    count<E extends object>(schema: ModelSchema<E>, condition: SqlCondition): Promise<number>;
+	    create<E extends object>(schema: ModelSchema<E>, entity: Partial<E>): E;
+	    load<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): Promise<MaybeUndefined<E>>;
+	    loadSync<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
+	    getChanges(): ChangesHistoryItem<Entity>[];
+	    getTrackingOrCachedEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
+	    getCachedEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    lockInThisSession(lockName: string, notThrow?: boolean): boolean;
 	    /**
 	     * Save changes to database
@@ -131,48 +129,13 @@ export namespace AschCore
 	     * @param changesNO ,this value should be returned by @see saveChanges()
 	     */
 	    rollbackChanges(serial: number): Promise<number>;
-	    clearHistoryBefore(serial: number): void;
-	    readonly historyVersion: {
-	        min: number;
-	        max: number;
-	    };
-	    update<TEntity>(entity: TEntity): void;
-	    delete<TEntity>(entity: TEntity): void;
+	    update<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>, modifier: Partial<E>): void;
+	    increase<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>, increasements: Partial<E>): Partial<E>;
+	    delete<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>): void;
 	    beginTransaction(): Promise<DBTransaction>;
 	    beginEntityTransaction(): void;
 	    commitEntityTransaction(): void;
 	    rollbackEntityTransaction(): void;
-	}
-
-	//declarations/EntityCache.d.ts
-	/**
-	 * cache options
-	 */
-	export type EntityCacheOptions = {
-	    default: number;
-	    [model: string]: number | ((model: string) => number);
-	};
-	export interface EntityCache {
-	    models: Array<string>;
-	    clear(modelName?: string): void;
-	    get<TEntity>(modelName: string, key: EntityKey): MaybeUndefined<TEntity>;
-	    getAll<TEntity>(modelName: string, filter?: FilterFunction<TEntity>): MaybeUndefined<Array<TEntity>>;
-	    put(modelName: string, key: EntityKey, entity: Entity): void;
-	    evit(modelName: string, key: EntityKey): void;
-	    exists(modelName: string, key: EntityKey): boolean;
-	    existsModel(modelName: string): boolean;
-	}
-	export class LRUEntityCache implements EntityCache {
-	    constructor(options?: EntityCacheOptions);
-	    clear(modelName?: string): void;
-	    readonly models: string[];
-	    get<TEntity>(modelName: string, key: EntityKey): MaybeUndefined<TEntity>;
-	    getAll<TEntity>(modelName: string, filter?: FilterFunction<TEntity>): MaybeUndefined<Array<TEntity>>;
-	    put(modelName: string, key: EntityKey, entity: Entity): void;
-	    evit(modelName: string, key: EntityKey): void;
-	    exists(modelName: string, key: EntityKey): boolean;
-	    existsModel(modelName: string): boolean;
-	    dumpCache(): string;
 	}
 
 	//declarations/LevelBlock.d.ts
@@ -181,13 +144,13 @@ export namespace AschCore
 	    open(): Promise<void>;
 	    close(): Promise<void>;
 	    readonly lastBlockHeight: number;
-	    appendBlock(block: BlockHeader, changes: Array<EntityChangesItem>): Promise<void>;
+	    appendBlock(block: BlockHeader, changes: ChangesHistoryItem<Entity>[]): Promise<void>;
 	    getBlock(height: number): Promise<MaybeUndefined<BlockHeader>>;
-	    getHistoryChanges(minHeight: number, maxHeight: number): Promise<Map<number, Array<EntityChangesItem>>>;
+	    getHistoryChanges(minHeight: number, maxHeight: number): Promise<Map<number, Array<ChangesHistoryItem<Entity>>>>;
 	    deleteLastBlock(height: number): Promise<void>;
 	    getBlockById(blockId: string): Promise<MaybeUndefined<BlockHeader>>;
-	    getBlocksByHeightRange(minHeight: number, maxHeight: number): Promise<Array<BlockHeader>>;
-	    getBlocksByIds(blockIds: Array<string>): Promise<Array<BlockHeader>>;
+	    getBlocksByHeightRange(minHeight: number, maxHeight: number): Promise<BlockHeader[]>;
+	    getBlocksByIds(blockIds: string[]): Promise<BlockHeader[]>;
 	}
 
 	//declarations/Log.d.ts
@@ -220,12 +183,11 @@ export namespace AschCore
 	    fatal(msg: string, err: Error): void;
 	}
 	export interface LogFactory {
-	    create: (name: string) => Logger;
-	    level: LogLevel;
+	    createLog: (name: string) => Logger;
+	    getLevel: () => LogLevel;
 	    format: boolean;
 	}
 	export class LogManager {
-	    static readonly Instance: LogManager;
 	    static defaultLevel: LogLevel;
 	    static logFactory: LogFactory;
 	    static getLogger(loggerName?: string): Logger;
@@ -235,7 +197,24 @@ export namespace AschCore
 	export type Constructor<T> = {
 	    new (): T;
 	};
-	export type ModelNameOrType<TEntity> = string | Constructor<TEntity>;
+	export type ModelNameOrType<E> = string | Constructor<E>;
+	export type SimpleKey = string | number;
+	export type UniqueKey<E> = Partial<E>;
+	export type CompositeKey<E> = UniqueKey<E>;
+	export type PrimaryKey<E> = SimpleKey | CompositeKey<E>;
+	export type EntityKey<E> = PrimaryKey<E> | UniqueKey<E> | NormalizedEntityKey<E>;
+	export type NormalizedEntityKey<E> = UniqueKey<E>;
+	export type ResolvedEntityKey<E> = {
+	    isPrimaryKey?: boolean;
+	    isUniqueKey?: boolean;
+	    uniqueName: string;
+	    key: NormalizedEntityKey<E>;
+	};
+	export type EntityUnique<E> = {
+	    primaryKey?: UniqueKey<E>;
+	    uniqueKey?: UniqueKey<E>;
+	};
+	export type DbRecord = JsonObject;
 	export enum FieldTypes {
 	    String = "String",
 	    Number = "Number",
@@ -244,50 +223,75 @@ export namespace AschCore
 	    JSON = "Json",
 	}
 	export type FieldType = string | FieldTypes;
+	export type ModelIndex<E> = {
+	    name: string;
+	    properties: Property<E>[];
+	};
+	export type DbIndex = {
+	    name: string;
+	    fields: string[];
+	};
 	export interface Field {
 	    name: string;
 	    type: FieldType;
 	    length?: number;
-	    index?: boolean;
+	    index?: boolean | string;
+	    unique?: boolean | string;
 	    not_null?: boolean;
 	    primary_key?: boolean;
 	    composite_key?: boolean;
 	    default?: number | string | null;
 	}
+	export interface ForeignKey {
+	    field: string;
+	    table: string;
+	    table_field: string;
+	}
 	export interface Schema {
 	    table?: string;
 	    memory?: boolean;
+	    maxCached?: number;
 	    readonly?: boolean;
 	    local?: boolean;
-	    tableFields: Array<Field>;
+	    tableFields: Field[];
+	    foreignKeys?: ForeignKey[];
 	}
-	export class CompositeKey implements KeyObject {
-	    constructor(keyObject: JsonObject);
-	    static make<TEntity>(schema: ModelSchema, entity: TEntity): CompositeKey;
-	    static fromString(keyJsonString: string): CompositeKey;
-	    readonly keyJson: JsonObject;
-	    readonly key: string;
-	    toString(): string;
+	export class InvalidEntityKeyError extends Error {
+	    constructor(modelName: string, key: EntityKey<Entity>);
 	}
-	export function isCompositeKey(key: any): boolean;
-	export class ModelSchema {
+	export class ModelSchema<E extends object> {
 	    constructor(schema: Schema, name: string);
-	    getFieldTypes(schema: Schema): Map<string, string>;
+	    readonly properties: Property<E>[];
+	    readonly jsonProperties: Property<E>[];
 	    readonly schemaObject: Schema;
-	    readonly jsonFields: string[];
 	    readonly isCompsiteKey: boolean;
-	    readonly primaryKey: MaybeUndefined<string>;
-	    readonly compositeKeys: string[];
-	    readonly fieldNames: Array<string>;
-	    readonly indexes: Array<string>;
+	    readonly primaryKey: MaybeUndefined<Property<E>>;
+	    readonly compositeKeys: Property<E>[];
+	    readonly indexes: ModelIndex<E>[];
+	    readonly uniqueIndexes: ModelIndex<E>[];
+	    readonly maxCached: MaybeUndefined<number>;
 	    readonly modelName: string;
 	    readonly isLocal: boolean;
 	    readonly isReadonly: boolean;
 	    readonly memCached: boolean;
-	    setKey<TEntity>(entity: TEntity, key: EntityKey): TEntity;
-	    getKey<TEntity>(entity: TEntity): EntityKey;
-	    newEntity<TEntity>(model: ModelNameOrType<TEntity>, key: EntityKey): TEntity;
-	    copyProperties<TEntity>(dest: TEntity, src: TEntity, includeKey?: boolean): void;
+	    hasUniqueProperty(...properties: string[]): boolean;
+	    isValidProperty(name: string): boolean;
+	    isValidEntityKey(key: EntityKey<E>): boolean;
+	    setPrimaryKey(entity: Partial<E>, key: PrimaryKey<E>): Partial<E>;
+	    getPrimaryKey(entity: Partial<E>): PrimaryKey<E>;
+	    getNormalizedPrimaryKey(entity: Partial<E>): NormalizedEntityKey<E>;
+	    normalizePrimaryKey(key: PrimaryKey<E>): NormalizedEntityKey<E>;
+	    isValidPrimaryKey(key: PrimaryKey<E>): boolean;
+	    isValidUniqueKey(key: UniqueKey<E>): boolean;
+	    isPrimaryKeyUniqueName(indexName: string): boolean;
+	    getUniqueIndex(indexName: string): MaybeUndefined<ModelIndex<E>>;
+	    resolveKey(key: EntityKey<E>): MaybeUndefined<ResolvedEntityKey<E>>;
+	    copyProperties(entity: Partial<E>, includePrimaryKey?: boolean): Partial<E>;
+	    setDefaultValues(entity: E): void;
+	    splitEntityAndVersion(entityWithVersion: Versioned<E>): {
+	        version: number;
+	        entity: E;
+	    };
 	}
 
 	//declarations/SmartDB.d.ts
@@ -300,23 +304,16 @@ export namespace AschCore
 	     * cached history count(block count), used to rollback block
 	     * @default 10
 	     */
-	    historyForRollback?: number;
-	    /**
-	     * clean persisted history automatically
-	     * @default false
-	     */
-	    autoCleanPersistedHistory?: boolean;
+	    maxBlockHistoryHold?: number;
 	    /**
 	     * cached last block count
 	     * @default 10
 	     */
 	    cachedBlockCount?: number;
 	    /**
-	     * max cached entity count, config it per model, LRU
-	     * sample: { User: 200, Trans: 5000 } max cached 200s User ，5000 for Trans
-	     * @default 5000 each model
+	     * SmartDB will check modifier properties in model if checkModifier is true
 	     */
-	    entityCacheOptions?: EntityCacheOptions;
+	    checkModifier?: boolean;
 	};
 	/**
 	 * ORM like to operate blockchain data
@@ -358,7 +355,12 @@ export namespace AschCore
 	     * initialize SmartDB , you need call this before use SmartDB
 	     * @param schemas table schemas in Database
 	     */
-	    init(schemas: Array<ModelSchema>): Promise<void>;
+	    init(schemas: ModelSchema<Entity>[]): Promise<void>;
+	    /**
+	     * update schema, NOTIC : table must be empty !!!
+	     * @param schema schema
+	     */
+	    updateSchema(schema: ModelSchema<Entity>): Promise<void>;
 	    /**
 	     * free resources
 	     */
@@ -379,18 +381,31 @@ export namespace AschCore
 	     * hold a lock name which only succeed in first time of each block.
 	     * @param lockName lock name
 	     * @param notThrow do not throw exception if lock failed
+	     * @throws lock faild if lockName exists already and notThrow is false
 	     */
 	    lockInCurrentBlock(lockName: string, notThrow?: boolean): boolean;
+	    /**
+	   * hold a lock name which only succeed in first time of each block.
+	   * @param lockName lock name
+	   * @throws lock faild if lockName exists already
+	   */
+	    lock(lockName: string): void;
+	    /**
+	   * hold a lock name which only succeed in first time of each block.
+	   * @param lockName lock name
+	   * @returns true if lock succeed else false
+	   */
+	    tryLock(lockName: string): boolean;
 	    /**
 	     * begin a contract transaction which effect entities in memory
 	     */
 	    beginContract(): void;
 	    /**
-	     * commit contract transaction which effect entities in memory
+	     * commit entities changes , these changes will be save into database when block forged
 	     */
 	    commitContract(): void;
 	    /**
-	     * rollback contract transaction which effect entities in memory
+	     * rollback entities changes in memory
 	     */
 	    rollbackContract(): void;
 	    /**
@@ -404,11 +419,11 @@ export namespace AschCore
 	    commitBlock(): Promise<number>;
 	    /**
 	     * rollback block changes
-	     * @param height rollback to height(exclude)
+	     * @param height rollback to height(excluded)
 	     */
 	    rollbackBlock(height?: number): Promise<void>;
 	    /**
-	     * save local tables (not in block --- which define in schema by local : true) changes to database
+	     * save changes of local tables (not in block --- which define in schema by local : true) into database
 	     * @returns serial number for changes
 	     */
 	    saveLocalChanges(): Promise<number>;
@@ -418,129 +433,474 @@ export namespace AschCore
 	     */
 	    rollbackLocalChanges(serial: number): Promise<void>;
 	    /**
-	     * get entity key
-	     * @param model model modelName or model type
-	     * @param entity entity
-	     */
-	    getEntityKey<TEntity>(model: ModelNameOrType<TEntity>, entity: TEntity): MaybeUndefined<EntityKey>;
-	    /**
-	     * get tracking entity
-	     * @param model model modelName or model type
-	     * @param entity entity
-	     * @returns tracked entity or undefined
-	     */
-	    attach<TEntity>(model: ModelNameOrType<TEntity>, entity: Partial<TEntity>): Promise<MaybeUndefined<TEntity>>;
-	    /**
 	     * create a new entity which change will be tracked and persistented (by saveChanges) automatically
 	     * @param model modelName or model type
-	     * @param key entity key which uniqued in database
 	     * @param entity prototype entity which properties will copy to result entity
 	     * @returns tracking entity
 	     */
-	    create<TEntity>(model: ModelNameOrType<TEntity>, keyOrEntity: EntityKey | TEntity): TEntity;
+	    create<E extends object>(model: ModelNameOrType<E>, entity: Partial<E>): E;
+	    createOrLoad<E extends object>(model: ModelNameOrType<E>, entity: E): {
+	        create: boolean;
+	        entity: E;
+	    };
+	    increase<E extends object>(model: ModelNameOrType<E>, increasements: Partial<E>, key: NormalizedEntityKey<E>): Partial<E>;
 	    /**
 	     * update a entity
 	     * @param model modelName or model type
-	     * @param entity
+	     * @param keyOrEntity primary key of entity or parital entity with primary key property(s)
+	     * @param modifier json modifier, keyOrEntity properties used as modifier if not given
 	     */
+	    update<E extends object>(model: ModelNameOrType<E>, modifier: Partial<E>, key: NormalizedEntityKey<E>): void;
 	    /**
 	     * delete a entity
 	     * @param model modelName or model type
-	     * @param entity
+	     * @param key primaryKey of entity
 	     */
-	    del<TEntity>(model: ModelNameOrType<TEntity>, entity: TEntity): void;
+	    del<E extends object>(model: ModelNameOrType<E>, key: NormalizedEntityKey<E>): void;
 	    /**
 	     * load entity from cache and database
 	     * @param model model name or model type
 	     * @param key key of entity
 	     */
-	    get<TEntity>(model: ModelNameOrType<TEntity>, key: EntityKey): Promise<MaybeUndefined<TEntity>>;
-	    /**
-	     * load entity from database by condition
-	     * @param model model name or model type
-	     * @param condition see type SqlCondition
-	     * @param track track and cache result if true
-	     */
-	    getBy<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition): Promise<MaybeUndefined<TEntity>>;
+	    load<E extends object>(model: ModelNameOrType<E>, key: EntityKey<E>): Promise<MaybeUndefined<E>>;
+	    loadSync<E extends object>(model: ModelNameOrType<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    /**
 	   * get entities from database
 	   * @param model model name or model type
 	   * @param condition find condition, see type SqlCondition
-	   * @param track track and cache result if true
+	   * @param cache track and cache result if true
 	   */
-	    getMany<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition, track?: boolean): Promise<Array<TEntity>>;
+	    loadMany<E extends object>(model: ModelNameOrType<E>, condition: SqlCondition, cache?: boolean): Promise<E[]>;
 	    /**
 	     * load entity from cache only
 	     * @param model model name or model type
 	     * @param key key of entity
 	     * @returns tracked entity from cache
 	     */
-	    getCached<TEntity>(model: ModelNameOrType<TEntity>, key: EntityKey): MaybeUndefined<TEntity>;
+	    get<E extends object>(model: ModelNameOrType<E>, key: EntityKey<E>): MaybeUndefined<E>;
 	    /**
 	     * get all cached entities
 	     * @param model model name or model type
 	     * @param filter filter result
 	     */
-	    getAllCached<TEntity>(model: ModelNameOrType<TEntity>, filter?: FilterFunction<TEntity>): Array<TEntity>;
+	    getAll<E extends object>(model: ModelNameOrType<E>, filter?: FilterFunction<E>): E[];
 	    /**
 	     * find entities from database
 	     * @param model model name or model type
 	     * @param condition query condition, see type SqlCondition
 	     * @param resultRange limit and offset of results number or json, eg: 10 or { limit : 10, offset : 1 }
-	     * @param sort json { fieldName : 'ASC' | 'DESC' } , eg: { name : 'ASC', age : 'DESC' }
-	     * @param fields result fields, default is all fields
+	     * @param sort json { propertyName : 'ASC' | 'DESC' } , eg: { name : 'ASC', age : 'DESC' }
+	     * @param properties result properties, default is all properties of model
 	     * @param offset offset of result set
 	     * @param join join info
 	     */
-	    find<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, fields?: Array<string>, join?: JsonObject): Promise<Array<Entity>>;
+	    find<E extends object>(model: ModelNameOrType<E>, condition: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, properties?: string[], join?: JsonObject): Promise<Entity[]>;
 	    /**
 	     * find entities from database
 	     * @param model model name or model type
 	     * @param params mango like query params object
 	     */
-	    findOne<TEntity>(model: ModelNameOrType<TEntity>, params: JsonObject): Promise<MaybeUndefined<Entity>>;
+	    findOne<E extends object>(model: ModelNameOrType<E>, params: JsonObject): Promise<MaybeUndefined<E>>;
 	    /**
 	   * find entities from database
 	   * @param model model name or model type
 	   * @param params mango like query params object
 	   */
-	    findAll<TEntity>(model: ModelNameOrType<TEntity>, params: JsonObject): Promise<Array<Entity>>;
+	    findAll<E extends object>(model: ModelNameOrType<E>, params: JsonObject): Promise<E[]>;
 	    /**
-	     * query if exists record by specified condition
+	     * query if exists entity by specified condition
 	     * @param model model name or model type
 	     * @param condition query condition, see type SqlCondition
 	     */
-	    exists<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition): Promise<boolean>;
+	    exists<E extends object>(model: ModelNameOrType<E>, condition: SqlCondition): Promise<boolean>;
 	    /**
-	     * count records count by specified condition
+	     * count entities count by specified condition
 	     * @param model model name or model type
 	     * @param condition query condition, see type SqlCondition
 	     */
-	    count<TEntity>(model: ModelNameOrType<TEntity>, condition: SqlCondition): Promise<number>;
+	    count<E extends object>(model: ModelNameOrType<E>, condition: SqlCondition): Promise<number>;
 	    /**
-	     * get block header by height
-	     * @param height block height
-	     */
+	    * get block header by height
+	    * @param height block height
+	    * @param withTransactions result contains transactions, defualt is false
+	    * @returns block which height === given height
+	    */
 	    getBlockByHeight(height: number, withTransactions?: boolean): Promise<MaybeUndefined<Block>>;
 	    /**
 	     * get block header by block id
 	     * @param blockId block id
+	     * @param withTransactions result contains transactions, defualt is false
+	     * @returns block which id === given blockId
 	     */
 	    getBlockById(blockId: string, withTransactions?: boolean): Promise<MaybeUndefined<Block>>;
 	    /**
 	     * get block headers by height range
 	     * @param minHeight min height(included)
 	     * @param maxHeight max height(included)
+	     * @returns blocks which maxHeight >= height <= minHeight
 	     */
-	    getBlocksByHeightRange(minHeight: number, maxHeight: number, withTransactions?: boolean): Promise<Array<Block>>;
+	    getBlocksByHeightRange(minHeight: number, maxHeight: number, withTransactions?: boolean): Promise<Block[]>;
 	    /**
 	     * get block headers by block id array
 	     * @param blockIds array of block id
 	     */
-	    getBlocksByIds(blockIds: Array<string>, withTransactions?: boolean): Promise<Array<Block>>;
+	    getBlocksByIds(blockIds: string[], withTransactions?: boolean): Promise<Block[]>;
 	}
 
-	//declarations/KVDB/LevelDB.d.ts
+	//declarations/Utils.d.ts
+	export class PerformanceHelper {
+	    readonly time: (name: string) => void;
+	    readonly endTime: (refreshUptime?: boolean) => void;
+	    readonly restartTime: (name: string) => void;
+	    enabled: boolean;
+	}
+	export class Utils {
+	    static readonly Array: {
+	        chunk: any;
+	        compact: any;
+	        concat: any;
+	        difference: any;
+	        differenceBy: any;
+	        differenceWith: any;
+	        drop: any;
+	        dropRight: any;
+	        dropRightWhile: any;
+	        dropWhile: any;
+	        fill: any;
+	        findIndex: any;
+	        findLastIndex: any;
+	        first: any;
+	        head: any;
+	        flatten: any;
+	        flattenDeep: any;
+	        flattenDepth: any;
+	        fromPairs: any;
+	        indexOf: any;
+	        initial: any;
+	        intersection: any;
+	        intersectionBy: any;
+	        intersectionWith: any;
+	        join: any;
+	        last: any;
+	        lastIndexOf: any;
+	        nth: any;
+	        pull: any;
+	        pullAll: any;
+	        pullAllBy: any;
+	        pullAllWith: any;
+	        pullAt: any;
+	        remove: any;
+	        reverse: any;
+	        slice: any;
+	        sortedIndex: any;
+	        sortedIndexBy: any;
+	        sortedIndexOf: any;
+	        sortedLastIndex: any;
+	        sortedLastIndexBy: any;
+	        sortedLastIndexOf: any;
+	        sortedUniq: any;
+	        sortedUniqBy: any;
+	        tail: any;
+	        take: any;
+	        takeRight: any;
+	        takeRightWhile: any;
+	        takeWhile: any;
+	        union: any;
+	        unionBy: any;
+	        unionWith: any;
+	        uniq: any;
+	        uniqBy: any;
+	        uniqWith: any;
+	        unzip: any;
+	        unzipWith: any;
+	        without: any;
+	        xor: any;
+	        xorBy: any;
+	        xorWith: any;
+	        zip: any;
+	        zipObject: any;
+	        zipObjectDeep: any;
+	        zipWith: any;
+	    };
+	    static readonly String: {
+	        camelCase: any;
+	        capitalize: any;
+	        deburr: any;
+	        endsWith: any;
+	        escape: any;
+	        escapeRegExp: any;
+	        kebabCase: any;
+	        lowerCase: any;
+	        lowerFirst: any;
+	        pad: any;
+	        padEnd: any;
+	        padStart: any;
+	        parseInt: any;
+	        repeat: any;
+	        replace: any;
+	        snakeCase: any;
+	        split: any;
+	        startCase: any;
+	        startsWith: any;
+	        template: any;
+	        toLower: any;
+	        toUpper: any;
+	        trim: any;
+	        trimEnd: any;
+	        trimStart: any;
+	        truncate: any;
+	        unescape: any;
+	        upperCase: any;
+	        upperFirst: any;
+	        words: any;
+	    };
+	    static readonly Collection: {
+	        countBy: any;
+	        each: any;
+	        eachRight: any;
+	        every: any;
+	        filter: any;
+	        find: any;
+	        findLast: any;
+	        flatMap: any;
+	        flatMapDeep: any;
+	        flatMapDepth: any;
+	        forEach: any;
+	        forEachRight: any;
+	        groupBy: any;
+	        includes: any;
+	        invokeMap: any;
+	        keyBy: any;
+	        map: any;
+	        orderBy: any;
+	        partition: any;
+	        reduce: any;
+	        reduceRight: any;
+	        reject: any;
+	        sample: any;
+	        sampleSize: any;
+	        shuffle: any;
+	        size: any;
+	        some: any;
+	        sortBy: any;
+	    };
+	    static readonly Function: {
+	        after: any;
+	        ary: any;
+	        before: any;
+	        bind: any;
+	        bindKey: any;
+	        curry: any;
+	        curryRight: any;
+	        debounce: any;
+	        defer: any;
+	        delay: any;
+	        flip: any;
+	        memoize: any;
+	        negate: any;
+	        once: any;
+	        overArgs: any;
+	        partial: any;
+	        partialRight: any;
+	        rearg: any;
+	        rest: any;
+	        spread: any;
+	        throttle: any;
+	        unary: any;
+	        wrap: any;
+	    };
+	    static readonly Object: {
+	        assign: any;
+	        assignIn: any;
+	        assignInWith: any;
+	        assignWith: any;
+	        at: any;
+	        create: any;
+	        defaults: any;
+	        defaultsDeep: any;
+	        entries: any;
+	        entriesIn: any;
+	        extend: any;
+	        findKey: any;
+	        findLastKey: any;
+	        forIn: any;
+	        forInRight: any;
+	        forOwn: any;
+	        forOwnRight: any;
+	        functions: any;
+	        functionsIn: any;
+	        get: any;
+	        has: any;
+	        hasIn: any;
+	        invert: any;
+	        invertBy: any;
+	        invoke: any;
+	        keys: any;
+	        keysIn: any;
+	        mapKeys: any;
+	        mapValues: any;
+	        merge: any;
+	        mergeWith: any;
+	        omit: any;
+	        omitBy: any;
+	        pick: any;
+	        pickBy: any;
+	        result: any;
+	        set: any;
+	        setWith: any;
+	        toPairs: any;
+	        toPairsIn: any;
+	        transform: any;
+	        unset: any;
+	        update: any;
+	        updateWith: any;
+	        values: any;
+	        valuesIn: any;
+	    };
+	    static readonly Lang: {
+	        castArray: any;
+	        clone: any;
+	        cloneDeep: any;
+	        cloneDeepWith: any;
+	        cloneWith: any;
+	        conformsTo: any;
+	        eq: any;
+	        gt: any;
+	        gte: any;
+	        isArguments: any;
+	        isArray: any;
+	        isArrayBuffer: any;
+	        isArrayLike: any;
+	        isArrayLikeObject: any;
+	        isBoolean: any;
+	        isBuffer: any;
+	        isDate: any;
+	        isElement: any;
+	        isEmpty: any;
+	        isEqual: any;
+	        isEqualWith: any;
+	        isError: any;
+	        isFinite: any;
+	        isFunction: any;
+	        isInteger: any;
+	        isLength: any;
+	        isMap: any;
+	        isMatch: any;
+	        isMatchWith: any;
+	        isNaN: any;
+	        isNative: any;
+	        isNil: any;
+	        isNull: any;
+	        isNumber: any;
+	        isObject: any;
+	        isObjectLike: any;
+	        isPlainObject: any;
+	        isRegExp: any;
+	        isSafeInteger: any;
+	        isSet: any;
+	        isString: any;
+	        isSymbol: any;
+	        isTypedArray: any;
+	        isUndefined: any;
+	        isWeakMap: any;
+	        isWeakSet: any;
+	        lt: any;
+	        lte: any;
+	        toArray: any;
+	        toFinite: any;
+	        toInteger: any;
+	        toLength: any;
+	        toNumber: any;
+	        toPlainObject: any;
+	        toSafeInteger: any;
+	        toString: any;
+	    };
+	    static readonly Performace: PerformanceHelper;
+	}
+
+	//declarations/cache/EntityCache.d.ts
+	export type CacheEvitCallback<E extends object> = (key: CacheKey, entity: E) => void;
+	export interface Cache<E extends object> {
+	    model: ModelSchema<E>;
+	    onEvit: CacheEvitCallback<E>;
+	    clear(): void;
+	    has(key: CacheKey): boolean;
+	    get(key: CacheKey): MaybeUndefined<E>;
+	    forEach(callback: (e, key) => void): any;
+	    set(key: CacheKey, entity: E): void;
+	    evit(key: CacheKey): void;
+	    exists(key: CacheKey): boolean;
+	}
+	export interface EntityUniqueIndex<E extends object> {
+	    indexName: string;
+	    fields: Property<E>[];
+	    exists(uniqueKey: UniqueKey<E>): boolean;
+	    get(uniqueKey: UniqueKey<E>): MaybeUndefined<string>;
+	    add(uniqueKey: UniqueKey<E>, key: string): void;
+	    delete(uniqueKey: UniqueKey<E>): void;
+	}
+	export class DefaultEntityUniqueIndex<E extends object> implements EntityUniqueIndex<E> {
+	    constructor(name: string, indexFields: Property<E>[]);
+	    readonly indexName: string;
+	    readonly fields: Property<E>[];
+	    exists(uniqueKey: UniqueKey<E>): boolean;
+	    get(uniqueKey: UniqueKey<E>): MaybeUndefined<string>;
+	    add(uniqueKey: UniqueKey<E>, key: string): void;
+	    delete(uniqueKey: UniqueKey<E>): void;
+	}
+	export type CacheKey = number | string;
+	export class UniquedCache<E extends object> {
+	    constructor(cache: Cache<E>, uniquedIndexes: ModelIndex<E>[]);
+	    has(key: string): boolean;
+	    set(key: CacheKey, entity: E): void;
+	    get(key: CacheKey): MaybeUndefined<E>;
+	    forEach(callback: (e: E, key: string) => void): void;
+	    evit(key: CacheKey): void;
+	    getUnique(uniqueIndexName: string, uniqueKey: UniqueKey<E>): MaybeUndefined<E>;
+	    clear(): void;
+	}
+	export interface EntityCache {
+	    models: ModelSchema<Entity>[];
+	    clear(modelName?: string): void;
+	    get<E extends object>(modelName: string, key: NormalizedEntityKey<E>): MaybeUndefined<E>;
+	    getUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): MaybeUndefined<E>;
+	    existsUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): boolean;
+	    getAll<E extends object>(modelName: string, filter?: FilterFunction<E>): MaybeUndefined<E[]>;
+	    put<E extends object>(modelName: string, key: NormalizedEntityKey<E>, entity: E): void;
+	    evit<E extends object>(modelName: string, key: NormalizedEntityKey<E>): void;
+	    exists<E extends object>(modelName: string, key: NormalizedEntityKey<E>): boolean;
+	    existsModel(modelName: string): boolean;
+	    refreshCached<E extends object>(modelName: string, key: NormalizedEntityKey<E>, modifier: PropertyValue<E>[]): boolean;
+	}
+	export class UniquedEntityCache implements EntityCache {
+	    constructor(log: Logger, schemas: Map<string, ModelSchema<Entity>>);
+	    registerModel<E extends object>(schema: ModelSchema<E>, uniqueIndexes: ModelIndex<E>[]): void;
+	    unRegisterModel(modelName: string): void;
+	    clear(modelName?: string): void;
+	    readonly models: ModelSchema<Entity>[];
+	    get<E extends object>(modelName: string, key: NormalizedEntityKey<E>): MaybeUndefined<E>;
+	    getUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): MaybeUndefined<E>;
+	    existsUnique<E extends object>(modelName: string, uniqueName: string, uniqueKey: UniqueKey<E>): boolean;
+	    refreshCached<E extends object>(modelName: string, key: NormalizedEntityKey<E>, modifier: PropertyValue<E>[]): boolean;
+	    getAll<E extends object>(modelName: string, filter?: FilterFunction<E>): MaybeUndefined<E[]>;
+	    put<E extends object>(modelName: string, key: NormalizedEntityKey<E>, entity: Entity): void;
+	    evit<E extends object>(modelName: string, key: NormalizedEntityKey<E>): void;
+	    exists<E extends object>(modelName: string, key: NormalizedEntityKey<E>): boolean;
+	    existsModel(modelName: string): boolean;
+	    dumpCache(): string;
+	}
+
+	//declarations/cache/LRUEntityCache.d.ts
+	export class LRUEntityCache extends UniquedEntityCache {
+	    constructor(schemas: Map<string, ModelSchema<Entity>>);
+	}
+
+	//declarations/cache/NonExpiredEntityCache.d.ts
+	export class NonExpiredEntityCache extends UniquedEntityCache {
+	    constructor(schemas: Map<string, ModelSchema<Entity>>);
+	}
+
+	//declarations/kvdb/LevelDB.d.ts
 	export type GetIndexValueFunc = (key: any, value: JsonObject) => any;
 	export type IndexField = {
 	    fieldName: string;
@@ -549,7 +909,7 @@ export namespace AschCore
 	export class SubLevelMeta {
 	    subName: string;
 	    keyField: string;
-	    indexFields: Array<IndexField>;
+	    indexFields: IndexField[];
 	    constructor(subName: string, keyField: string, indexFields?: IndexField[]);
 	    existsIndex(fieldName: string): boolean;
 	    addIndex(fieldName: string, calcIndex: GetIndexValueFunc): this;
@@ -567,16 +927,16 @@ export namespace AschCore
 	export interface LevelOperation {
 	    put<T>(key: any, value: T, options?: JsonObject, callback?: Callback<void>): Promise<void>;
 	    del(key: any, delCallback?: Callback<void>): Promise<void>;
-	    batch(operArray: Array<JsonObject>, options?: JsonObject): Promise<void>;
+	    batch(operArray: JsonObject[], options?: JsonObject): Promise<void>;
 	}
 	export interface IndexedLevel extends LevelGet, LevelOperation {
 	    name: string;
-	    indexes: Array<IndexField>;
+	    indexes: IndexField[];
 	    byIndex(indexField: string): LevelGet;
 	    getBy<T>(indexField: string, key: any, getCallback?: Callback<MaybeUndefined<T>>): Promise<MaybeUndefined<T>>;
 	}
 	export class LevelDB {
-	    constructor(dbDir: string, meta: Array<SubLevelMeta>, options?: {});
+	    constructor(dbDir: string, meta: SubLevelMeta[], options?: {});
 	    static isKeyNotFoundError(err: Error): boolean;
 	    readonly level: any;
 	    getSubLevel(subName: string): IndexedLevel;
@@ -587,7 +947,10 @@ export namespace AschCore
 	    dump(): Promise<string>;
 	}
 
-	//declarations/SQLDB/DbConnection.d.ts
+	//declarations/memdb/Membase.d.ts
+
+
+	//declarations/sqldb/DbConnection.d.ts
 	export type ConnectionOptions = {
 	    [keys in 'storage' | 'userName' | 'password' | 'database']?: any;
 	};
@@ -601,12 +964,12 @@ export namespace AschCore
 	    connect(): Promise<boolean>;
 	    disconnect(): Promise<boolean>;
 	    runScript(sql: string): Promise<void>;
-	    query(sql: string, parameters?: SqlParameters): Promise<Array<any>>;
-	    querySync(sql: string, parameters?: SqlParameters): Array<any>;
+	    query(sql: string, parameters?: SqlParameters): Promise<DbRecord[]>;
+	    querySync(sql: string, parameters?: SqlParameters): DbRecord[];
 	    execute(sql: string, parameters?: SqlParameters, throwIfNoneEffected?: boolean): Promise<SqlExecuteResult>;
 	    executeSync(sql: string, parameters?: SqlParameters, throwIfNoneEffected?: boolean): SqlExecuteResult;
-	    executeBatchSync(sqls: Array<SqlAndParameters>): Array<SqlExecuteResult>;
-	    executeBatch(sqls: Array<SqlAndParameters>): Promise<Array<SqlExecuteResult>>;
+	    executeBatchSync(sqls: SqlAndParameters[]): SqlExecuteResult[];
+	    executeBatch(sqls: SqlAndParameters[]): Promise<SqlExecuteResult[]>;
 	    beginTrans(): Promise<DBTransaction>;
 	}
 	export interface DBTransaction {
@@ -614,7 +977,7 @@ export namespace AschCore
 	    rollback(): Promise<void>;
 	}
 
-	//declarations/SQLDB/SqlBuilder.d.ts
+	//declarations/sqldb/SqlBuilder.d.ts
 	export const MULTI_SQL_SEPARATOR = ";";
 	export enum SqlType {
 	    Schema = 0,
@@ -637,7 +1000,7 @@ export namespace AschCore
 	export type SelectExpression = {
 	    select: {
 	        table: string;
-	        fields?: Array<string>;
+	        fields?: string[];
 	        where?: string;
 	        [key: string]: any;
 	    };
@@ -647,7 +1010,7 @@ export namespace AschCore
 	    [field: string]: string | number;
 	};
 	export type FieldArrayValueExpression = {
-	    [field: string]: Array<string | number>;
+	    [field: string]: SimpleKey[];
 	};
 	export type NullCompareExpression = {
 	    $null: string;
@@ -663,7 +1026,7 @@ export namespace AschCore
 	};
 	export type ArrayCompareExpression = FieldArrayValueExpression | {
 	    [field: string]: {
-	        [oper in '$between' | '$in' | '$nin']?: Array<ValueExpression> | SelectExpression;
+	        [oper in '$between' | '$in' | '$nin']?: ValueExpression[] | SelectExpression;
 	    };
 	};
 	export type LikeExpression = {
@@ -672,10 +1035,10 @@ export namespace AschCore
 	    };
 	};
 	export type CompareExpression = ValueCompareExpression | ArrayCompareExpression | LikeExpression | NullCompareExpression;
-	export type RelationExpression = Array<CompareExpression> | {
+	export type RelationExpression = CompareExpression[] | {
 	    $not: CompareExpression | RelationExpression;
 	} | {
-	    [oper in '$and' | '$or']?: Array<CompareExpression> | Array<RelationExpression>;
+	    [oper in '$and' | '$or']?: CompareExpression[] | RelationExpression[];
 	};
 	export type SqlCondition = CompareExpression | RelationExpression;
 	export type LimitAndOffset = {
@@ -686,41 +1049,43 @@ export namespace AschCore
 	export type SqlOrderItem = {
 	    [field: string]: 'ASC' | 'DESC' | 1 | -1;
 	};
-	export type SqlOrder = SqlOrderItem | Array<SqlOrderItem>;
+	export type SqlOrder = SqlOrderItem | SqlOrderItem[];
 	export interface SqlBuilder {
-	    buildSchema(schema: ModelSchema): Array<string>;
-	    buildInsert(schema: ModelSchema, fieldValues: JsonObject): SqlAndParameters;
-	    buildDelete(schema: ModelSchema, key: EntityKey): SqlAndParameters;
-	    buildUpdate(schema: ModelSchema, key: EntityKey, fieldValues: JsonObject, version: number): SqlAndParameters;
-	    buildSelect(schema: ModelSchema, params: JsonObject): SqlAndParameters;
-	    buildSelect(schema: ModelSchema, fields: Array<string>, where: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, join?: JsonObject): SqlAndParameters;
+	    buildDropSchema<E extends object>(schema: ModelSchema<E>): string;
+	    buildSchema<E extends object>(schema: ModelSchema<E>): string[];
+	    buildInsert<E extends object>(schema: ModelSchema<E>, fieldValues: JsonObject): SqlAndParameters;
+	    buildDelete<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): SqlAndParameters;
+	    buildUpdate<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>, fieldValues: JsonObject, version: number): SqlAndParameters;
+	    buildSelect<E extends object>(schema: ModelSchema<E>, params: JsonObject): SqlAndParameters;
+	    buildSelect<E extends object>(schema: ModelSchema<E>, fields: string[], where: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, join?: JsonObject): SqlAndParameters;
 	}
 	export class JsonSqlBuilder implements SqlBuilder {
-	    buildSchema(schema: ModelSchema): Array<string>;
-	    buildInsert(schema: ModelSchema, fieldValues: JsonObject): SqlAndParameters;
-	    buildDelete(schema: ModelSchema, key: EntityKey): SqlAndParameters;
-	    buildUpdate(schema: ModelSchema, key: EntityKey, fieldValues: JsonObject, version: number): SqlAndParameters;
-	    buildSelect(schema: ModelSchema, fieldsOrParams: Array<string> | JsonObject, where?: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, join?: JsonObject): SqlAndParameters;
+	    buildDropSchema<E extends object>(schema: ModelSchema<E>): string;
+	    buildSchema<E extends object>(schema: ModelSchema<E>): string[];
+	    buildInsert<E extends object>(schema: ModelSchema<E>, fieldValues: JsonObject): SqlAndParameters;
+	    buildDelete<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): SqlAndParameters;
+	    buildUpdate<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>, fieldValues: JsonObject, version: number): SqlAndParameters;
+	    buildSelect<E extends object>(schema: ModelSchema<E>, fieldsOrParams: string[] | JsonObject, where?: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, join?: JsonObject): SqlAndParameters;
 	}
 
-	//declarations/SQLDB/SqliteConnection.d.ts
+	//declarations/sqldb/SqliteConnection.d.ts
 	export class SqliteConnection implements DbConnection {
 	    constructor(options: ConnectionOptions);
 	    readonly connectionOptions: ConnectionOptions;
 	    readonly isConnected: boolean;
 	    connect(): Promise<boolean>;
 	    disconnect(): Promise<boolean>;
-	    query(sql: string, parameters?: SqlParameters): Promise<Array<any>>;
-	    querySync(sql: string, parameters?: SqlParameters): Array<any>;
-	    executeBatchSync(sqls: Array<SqlAndParameters>): Array<SqlExecuteResult>;
-	    executeBatch(sqls: Array<SqlAndParameters>): Promise<Array<SqlExecuteResult>>;
+	    query(sql: string, parameters?: SqlParameters): Promise<DbRecord[]>;
+	    querySync(sql: string, parameters?: SqlParameters): DbRecord[];
+	    executeBatchSync(sqls: SqlAndParameters[]): SqlExecuteResult[];
+	    executeBatch(sqls: SqlAndParameters[]): Promise<SqlExecuteResult[]>;
 	    executeSync(sql: string, parameters?: SqlParameters, throwIfNoneEffected?: boolean): SqlExecuteResult;
 	    execute(sql: string, parameters?: SqlParameters, throwIfNoneEffected?: boolean): Promise<SqlExecuteResult>;
 	    runScript(sql: string): Promise<void>;
 	    beginTrans(): Promise<DBTransaction>;
 	}
 
-	//declarations/SQLDB/SqliteWrapper.d.ts
+	//declarations/sqldb/SqliteWrapper.d.ts
 	export class SqliteWrapper {
 	    constructor();
 	    open(dbFilePath: string, callback?: Callback<boolean>): boolean;
@@ -729,25 +1094,48 @@ export namespace AschCore
 	    close(callback?: Callback<boolean>): boolean;
 	    asynClose(): Promise<boolean>;
 	    execute(sql: string, parameters?: SqlParameters, callback?: Callback<SqlExecuteResult>): SqlExecuteResult;
-	    query(sql: string, parameters?: SqlParameters, callback?: Callback<Array<any>>): Array<any>;
-	    executeBatch(sqls: Array<SqlAndParameters>, onExecuted?: (ret: SqlExecuteResult, s: SqlAndParameters) => void, callback?: Callback<Array<SqlExecuteResult>>): Array<SqlExecuteResult>;
+	    query(sql: string, parameters?: SqlParameters, callback?: Callback<any[]>): any[];
+	    executeBatch(sqls: SqlAndParameters[], onExecuted?: (ret: SqlExecuteResult, s: SqlAndParameters) => void, callback?: Callback<SqlExecuteResult[]>): SqlExecuteResult[];
 	    asynExecute(sql: any, parameters?: SqlParameters): Promise<SqlExecuteResult>;
-	    asynQuery(sql: string, parameters?: SqlParameters): Promise<Array<any>>;
-	    asyncExecuteBatch(sqls: Array<SqlAndParameters>, onExecuted?: (ret: SqlExecuteResult, s: SqlAndParameters) => void): Promise<Array<SqlExecuteResult>>;
+	    asynQuery(sql: string, parameters?: SqlParameters): Promise<any[]>;
+	    asyncExecuteBatch(sqls: SqlAndParameters[], onExecuted?: (ret: SqlExecuteResult, s: SqlAndParameters) => void): Promise<SqlExecuteResult[]>;
 	}
 
-	//declarations/StateTracker/EntityProxy.d.ts
-	/**
-	 *     STATE TRANSFER                  ACTION                TRACK      CACHE
-	 * ----------------------------------------------------------------------------
-	 *      ?         -> persitent      session.load             track     cache
-	 *      ?         -> new            session.create           track       -
-	 * persistent     -> modified       set property             keep       keep
-	 * persistent     -> deleted        session.del              keep       keep
-	 * new | modified -> presistent     session.saveChanges      keep     cache|update
-	 * deleted        -> transient      session.saveChanges      evit       evit
-	 * -------------------------------------------------------------------------------
-	 */
+	//declarations/tracker/BasicEntityTracker.d.ts
+	export type LoadChangesHistoryAction = (fromVersion: number, toVersion: number) => Promise<Map<number, ChangesHistoryItem<Entity>[]>>;
+	export type Stack<T> = Array<T>;
+	export const Stack: ArrayConstructor;
+	export class BasicEntityTracker implements EntityTracker {
+	    makeModelAndKey<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): ModelAndKey;
+	    splitModelAndKey<E extends object>(modelAndKey: ModelAndKey): {
+	        model: string;
+	        key: PrimaryKey<E>;
+	    };
+	    readonly trackingEntities: Iterable<TrackingEntity<Entity>>;
+	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
+	    getConfimedChanges(): EntityChanges<Entity>[];
+	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<E>;
+	    trackPersistent<E extends object>(schema: ModelSchema<E>, entity: Versioned<E>): TrackingEntity<E>;
+	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>): void;
+	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>, modifier: Partial<E>): void;
+	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<E>>;
+	    acceptChanges(historyVersion: number): void;
+	    rejectChanges(): void;
+	    rollbackChanges(historyVersion: number): Promise<void>;
+	    readonly isConfirming: boolean;
+	    beginConfirm(): void;
+	    confirm(): void;
+	    cancelConfirm(): void;
+	        min: number;
+	        max: number;
+	    };
+	    getChangesUntil(historyVersion: number): Promise<Stack<EntityChanges<Entity>>>;
+	}
+
+	//declarations/tracker/EntityStateManager.d.ts
+
+
+	//declarations/tracker/EntityTracker.d.ts
 	export enum EntityState {
 	    Transient = -1,
 	    Persistent = 0,
@@ -755,154 +1143,70 @@ export namespace AschCore
 	    Modified = 2,
 	    Deleted = 3,
 	}
-	export interface EntityExtension {
-	    _version_: number;
-	    __detached__: boolean;
-	    __tracking__: boolean;
-	    __confirmed__: boolean;
-	    __schema__: ModelSchema;
-	    __tracker__: EntityTracker;
-	    __state__: EntityState;
-	    __changes__: Nullable<EntityChanges>;
-	    __unconfirmedChanges__: Nullable<EntityChanges>;
-	}
-	export interface Proxied<T> extends EntityExtension {
-	}
-	export class EntityProxy {
-	    constructor(tracker: EntityTracker);
-	    static isExtended(entity: Entity): boolean;
-	    static isProxied(entity: Entity): boolean;
-	    static convertToProxied<TEntity>(entity: Entity): Proxied<TEntity>;
-	    static proxyToEntity(proxied: Proxied<Entity>, containsVersion?: boolean): Entity;
-	    static isNormalProperty(propertyName: string): boolean;
-	    static isDirty(entity: Entity): boolean;
-	    /**
-	     * Make entity wrapped by proxy so that state changes can be detected and collected
-	     * @param entity Entity create manual
-	     * @param model Model Name
-	     */
-	    proxyNew<TEntity>(entity: TEntity, schema: ModelSchema, confirmed: boolean): Proxied<TEntity>;
-	    /**
-	     * Make entity wrapped by proxy so that state changes can be detected
-	     * @param entity Entity loaded from database. ATTENSTION: ensure that has property '_version_'
-	     * @param model Model Name
-	     */
-	    proxyPersistent<TEntity>(entity: Entity, schema: ModelSchema, confirmed: boolean): Proxied<TEntity>;
-	    confirmChanges<TEntity>(pe: Proxied<TEntity>): void;
-	    cancelChanges<TEntity>(pe: Proxied<TEntity>): void;
-	}
-
-	//declarations/StateTracker/EntityTracker.d.ts
+	export const ENTITY_VERSION_PROPERTY = "_version_";
+	export const ENTITY_EXTENSION_SYMBOL = "__extension__";
+	export type Versioned<E extends object> = Minix<E, {
+	    '_version_': number;
+	}>;
+	/******************************/
+	/******************************/
 	export enum EntityChangeType {
 	    New = 1,
 	    Modify = 2,
 	    Delete = 3,
 	}
-	export interface PropertyChange {
-	    name: string;
-	    original: any;
-	    current: any;
+	export interface PropertyChange<E extends object> {
+	    name: string & ((keyof E) | '_version_');
+	    original?: any;
+	    current?: any;
 	}
-	export interface EntityChanges {
-	    dbVersion: number;
+	export interface PropertyValue<E extends object> {
+	    name: Property<E>;
+	    value: any;
+	}
+	export interface EntityChanges<E extends object> {
 	    type: EntityChangeType;
-	    propertiesChanges: Array<PropertyChange>;
+	    dbVersion: number;
+	    model: string;
+	    primaryKey: NormalizedEntityKey<E>;
+	    propertyChanges: PropertyChange<E>[];
 	}
-	export type EntityTrackerAction = (model: string, entity: Entity, changes: EntityChanges) => void;
+	export type ModelAndKey = string;
+	export type ChangesHistoryItem<E extends object> = EntityChanges<E>;
+	export type TrackingEntityChangesItem<E extends object> = EntityChanges<E>;
+	export type TrackingEntity<E extends object> = Versioned<E>;
 	export interface EntityTracker {
-	    readonly trackingEntities: Iterable<Entity>;
-	    isTracking(schema: ModelSchema, key: EntityKey): boolean;
-	    trackNew(schema: ModelSchema, entity: Entity): Entity;
-	    trackPersistent(schema: ModelSchema, entity: Entity): Entity;
-	    trackDelete(schema: ModelSchema, entity: Entity): void;
-	    stopTrack(schema: ModelSchema, entity: Entity): void;
-	    stopTrackAll(): void;
+	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<E>;
+	    trackPersistent<E extends object>(schema: ModelSchema<E>, entityWithVersion: Versioned<E>): TrackingEntity<E>;
+	    trackModify<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>, modifier: Partial<E>): void;
+	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>): void;
 	    acceptChanges(historyVersion: number): void;
 	    rejectChanges(): void;
-	    rollbackChanges(historyVersion: number): void;
+	    rollbackChanges(historyVersion: number): Promise<void>;
+	    getConfimedChanges(): EntityChanges<Entity>[];
+	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
+	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<E>>;
 	    isConfirming: boolean;
 	    beginConfirm(): void;
 	    confirm(): void;
 	    cancelConfirm(): void;
 	}
-	export type ModelAndKey = string;
-	export type EntityChangesItem = {
-	    modelAndKey: ModelAndKey;
-	    changes?: EntityChanges;
-	};
-	export type HistoryVersion = {
-	    min: number;
-	    max: number;
-	};
-	export class BaseEntityTracker {
-	    makeModelAndKey(schema: ModelSchema, key: EntityKey): ModelAndKey;
-	    splitModelAndKey(modelAndKey: ModelAndKey): {
-	        model: string;
-	        key: EntityKey;
-	    };
-	    attachHistory(history: Map<number, Array<EntityChangesItem>>): void;
-	    readonly historyVersion: {
-	        min: number;
-	        max: number;
-	    };
-	    getChangesUntil(historyVersion: number): Array<Map<ModelAndKey, EntityChanges>>;
-	    clearHistoryBefore(historyVersion: number): void;
+
+	//declarations/tracker/SnapshotEntityTracker.d.ts
+	export class SnapshotEntityTracker extends BasicEntityTracker implements EntityTracker {
+	    constructor(cache: EntityCache, schemas: Map<string, ModelSchema<Entity>>, maxHistoryVersionsHold: number, onLoadHistory: LoadChangesHistoryAction);
 	}
 
-	//declarations/StateTracker/ProxiedEntityTracker.d.ts
-	export type ProxiedEntityAndChanges = {
-	    entity: Proxied<any>;
-	    changes: MaybeUndefined<EntityChanges>;
-	};
-	export class ProxiedEntityTracker extends BaseEntityTracker implements EntityTracker {
-	    constructor(cache: EntityCache);
-	    getModelAndKey(pe: Proxied<any>): ModelAndKey;
-	    attach(pe: Proxied<any>): void;
-	    getLastChanges(pe: Proxied<any>): MaybeUndefined<EntityChanges>;
-	    readonly trackingEntities: Iterable<Entity>;
-	    isTracking(schema: ModelSchema, key: EntityKey): boolean;
-	    registerUnconfirmedEntity(pe: Proxied<any>): void;
-	    readonly isConfirming: boolean;
-	    beginConfirm(): void;
-	    confirm(): void;
-	    cancelConfirm(): void;
-	    getTrackingEntity<TEntity>(schema: ModelSchema, key: EntityKey): MaybeUndefined<Proxied<TEntity>>;
-	    trackNew<TEntity>(schema: ModelSchema, entity: TEntity): TEntity;
-	    trackDelete(schema: ModelSchema, entity: Entity): void;
-	    trackPersistent<TEntity>(schema: ModelSchema, entity: TEntity): TEntity;
-	    stopTrack(schema: ModelSchema, entity: Entity): void;
-	    stopTrackAll(): void;
-	    getTrackingChanges(): Array<EntityChangesItem>;
-	    detectChanges(): Array<ProxiedEntityAndChanges>;
-	    acceptChanges(historyVersion: number): void;
-	    rejectChanges(): void;
-	    rollbackChanges(historyVersion: number): void;
-	    dumpHistory(): string;
+	//declarations/tracker/TrackerSqlBuilder.d.ts
+	export interface TrackerSqlBuilder {
+	    buildChangeSqls(): SqlAndParameters[];
+	    buildRollbackChangeSqls(historyVersion: number): Promise<SqlAndParameters[]>;
 	}
-	export class ProxiedTrackerSqlBuilder {
-	    constructor(tracker: ProxiedEntityTracker, models: Map<string, ModelSchema>, sqlBuilder: SqlBuilder);
-	    readonly entityTracker: ProxiedEntityTracker;
-	    buildChangeSqls(): Array<SqlAndParameters>;
-	    buildRollbackChangeSqls(historyVersion: number): Array<SqlAndParameters>;
-	}
-
-	//declarations/StateTracker/SnapshotEntityTracker.d.ts
-	export class SnapshotEntityTracker extends BaseEntityTracker implements EntityTracker {
-	    constructor(cache: EntityCache);
-	    readonly trackingEntities: Iterable<Entity>;
-	    isTracking(schema: ModelSchema, key: EntityKey): boolean;
-	    trackNew(schema: ModelSchema, entity: Entity): Entity;
-	    trackPersistent(schema: ModelSchema, entity: Entity): Entity;
-	    trackDelete(schema: ModelSchema, entity: Entity): void;
-	    stopTrack(schema: ModelSchema, entity: Entity): void;
-	    stopTrackAll(): void;
-	    acceptChanges(historyVersion: number): void;
-	    rejectChanges(): void;
-	    rollbackChanges(historyVersion: number): void;
-	    readonly isConfirming: boolean;
-	    beginConfirm(): void;
-	    confirm(): void;
-	    cancelConfirm(): void;
+	export class BasicTrackerSqlBuilder implements TrackerSqlBuilder {
+	    constructor(tracker: BasicEntityTracker, schemas: Map<string, ModelSchema<Entity>>, sqlBuilder: SqlBuilder);
+	    readonly entityTracker: BasicEntityTracker;
+	    buildChangeSqls(): SqlAndParameters[];
+	    buildRollbackChangeSqls(historyVersion: number): Promise<SqlAndParameters[]>;
 	}
 
 }
