@@ -104,6 +104,7 @@ export namespace AschCore
 	    syncSchema<E extends object>(schema: ModelSchema<E>): void;
 	    updateSchema<E extends object>(schema: ModelSchema<E>): Promise<void>;
 	    registerSchema(...schemas: ModelSchema<Entity>[]): void;
+	    initSerial(serial: number): Promise<void>;
 	    close(): Promise<void>;
 	    getAll<E extends object>(schema: ModelSchema<E>, filter?: FilterFunction<E>): E[];
 	    loadAll<E extends object>(schema: ModelSchema<E>): E[];
@@ -1106,6 +1107,7 @@ export namespace AschCore
 	export type Stack<T> = Array<T>;
 	export const Stack: ArrayConstructor;
 	export class BasicEntityTracker implements EntityTracker {
+	    initVersion(version: number): Promise<void>;
 	    makeModelAndKey<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): ModelAndKey;
 	    splitModelAndKey<E extends object>(modelAndKey: ModelAndKey): {
 	        model: string;
@@ -1194,7 +1196,7 @@ export namespace AschCore
 
 	//declarations/tracker/SnapshotEntityTracker.d.ts
 	export class SnapshotEntityTracker extends BasicEntityTracker implements EntityTracker {
-	    constructor(cache: EntityCache, schemas: Map<string, ModelSchema<Entity>>, maxHistoryVersionsHold: number, onLoadHistory: LoadChangesHistoryAction);
+	    constructor(cache: EntityCache, schemas: Map<string, ModelSchema<Entity>>, maxHistoryVersionsHold: number, onLoadHistory: Nullable<LoadChangesHistoryAction>);
 	}
 
 	//declarations/tracker/TrackerSqlBuilder.d.ts
