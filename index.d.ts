@@ -85,6 +85,16 @@ export namespace AschCore
 	    message: Nullable<string>;
 	};
 	export type VerifyFunction = () => ContractVerifyResult;
+	interface EventHandler {
+	    isSync: boolean;
+	    handler: (...args: any[]) => Promise<any> | void;
+	}
+	export class AsyncEventEmitter {
+	    on(eventName: string, handler: (...args: any[]) => Promise<any>, isSync?: boolean): void;
+	    emit(eventName: string, ...args: any[]): Promise<void>;
+	    emitSync(eventName: string, ...args: any[]): void;
+	    getListeners(eventName: string): EventHandler[];
+	}
 	export class CodeContract {
 	    static verify(condition: ContractCondition, message: ContractMessage): void;
 	    static argument(argName: string, verify: VerifyFunction | ContractCondition, message?: ContractMessage): void;
@@ -92,13 +102,22 @@ export namespace AschCore
 	    static notNullOrEmpty(str: Nullable<string>): ContractVerifyResult;
 	    static notNullOrWhitespace(str: Nullable<string>): ContractVerifyResult;
 	}
+	export {};
 
 	//declarations/DbSession.d.ts
 	export interface DbSessionOptions {
 	    name?: string;
 	    maxHistoryVersionsHold?: number;
 	}
-	export class DbSession {
+	export class DbSession extends AsyncEventEmitter {
+	    static readonly events: {
+	        beforeSaveChanges: string;
+	        saveChanges: string;
+	        afterSaveChanges: string;
+	        beforeRollbackChanges: string;
+	        rollbackChanges: string;
+	        afterRollbackChanges: string;
+	    };
 	    constructor(connection: DbConnection, onLoadHistory: Nullable<LoadChangesHistoryAction>, sessionOptions: DbSessionOptions);
 	    readonly isOpen: boolean;
 	    syncSchema<E extends object>(schema: ModelSchema<E>): void;
@@ -164,7 +183,7 @@ export namespace AschCore
 	    Warn = 4,
 	    Error = 2,
 	    Fatal = 1,
-	    None = 0,
+	    None = 0
 	}
 	export interface Logger {
 	    logLevel: LogLevel;
@@ -221,7 +240,7 @@ export namespace AschCore
 	    Number = "Number",
 	    BigInt = "BigInt",
 	    Text = "Text",
-	    JSON = "Json",
+	    JSON = "Json"
 	}
 	export type FieldType = string | FieldTypes;
 	export type ModelIndex<E> = {
@@ -296,10 +315,6 @@ export namespace AschCore
 	}
 
 	//declarations/SmartDB.d.ts
-	/// <reference types="node" />
-	import { EventEmitter } from 'events';
-	export type CommitBlockHook = (block: Block) => void;
-	export type RollbackBlockHook = (fromHeight: number, toHeight: number) => void;
 	export type SmartDBOptions = {
 	    /**
 	     * cached history count(block count), used to rollback block
@@ -321,7 +336,19 @@ export namespace AschCore
 	 * @event ready emmit after initialized
 	 * @event close emmit after closed
 	 */
-	export class SmartDB extends EventEmitter {
+	export class SmartDB extends AsyncEventEmitter {
+	    static readonly events: {
+	        beforeCommitBlock: string;
+	        commitBlock: string;
+	        afterCommitBlock: string;
+	        beforeRollbackBlock: string;
+	        rollbackBlock: string;
+	        afterRollbackBlock: string;
+	        beforeCommitContract: string;
+	        afterCommitContract: string;
+	        beforeRollbackContract: string;
+	        afterRollbackContract: string;
+	    };
 	    /**
 	     * Constructor
 	     * NOTIC : you need call init before use SmartDB
@@ -330,28 +357,6 @@ export namespace AschCore
 	     * @param options of SmartDB
 	     */
 	    constructor(dbPath: string, levelBlockDir: string, options?: SmartDBOptions);
-	    /**
-	     * register commit block hook, which will be called before commit block
-	     * @param name hook name
-	     * @param hookFunc hook function , ( block ) => void
-	     */
-	    registerCommitBlockHook(name: string, hookFunc: CommitBlockHook): void;
-	    /**
-	     * unregister commit block hook
-	     * @param name hook name
-	     */
-	    unregisterCommitBlockHook(name: string): void;
-	    /**
-	     * register rollback block hook, which will be called before commit block
-	     * @param name hook name
-	     * @param hookFunc hook function , ( fromHeight, toHeight ) => void
-	     */
-	    registerRollbackBlockHook(name: string, hookFunc: RollbackBlockHook): void;
-	    /**
-	     * unregister rollback block hook
-	     * @param name hook name
-	     */
-	    unregisterRollbackBlockHook(name: string): void;
 	    /**
 	     * initialize SmartDB , you need call this before use SmartDB
 	     * @param schemas table schemas in Database
@@ -404,11 +409,11 @@ export namespace AschCore
 	    /**
 	     * commit entities changes , these changes will be save into database when block forged
 	     */
-	    commitContract(): void;
+	    commitContract(): Promise<void>;
 	    /**
 	     * rollback entities changes in memory
 	     */
-	    rollbackContract(): void;
+	    rollbackContract(): Promise<void>;
 	    /**
 	     * begin a new block
 	     * @param blockHeader
@@ -827,7 +832,7 @@ export namespace AschCore
 	    clear(): void;
 	    has(key: CacheKey): boolean;
 	    get(key: CacheKey): MaybeUndefined<E>;
-	    forEach(callback: (e, key) => void): any;
+	    forEach(callback: (e: any, key: any) => void): any;
 	    set(key: CacheKey, entity: E): void;
 	    evit(key: CacheKey): void;
 	    exists(key: CacheKey): boolean;
@@ -986,7 +991,7 @@ export namespace AschCore
 	    Insert = 2,
 	    Update = 3,
 	    Delete = 4,
-	    Other = 9,
+	    Other = 9
 	}
 	export type SqlParameters = Array<any> | JsonObject;
 	export type SqlAndParameters = {
@@ -1036,7 +1041,8 @@ export namespace AschCore
 	    };
 	};
 	export type CompareExpression = ValueCompareExpression | ArrayCompareExpression | LikeExpression | NullCompareExpression;
-	export type RelationExpression = CompareExpression[] | {
+	export type RelationExpression = CompareExpression[] | // The $and is omitted 
+	{
 	    $not: CompareExpression | RelationExpression;
 	} | {
 	    [oper in '$and' | '$or']?: CompareExpression[] | RelationExpression[];
@@ -1143,7 +1149,7 @@ export namespace AschCore
 	    Persistent = 0,
 	    New = 1,
 	    Modified = 2,
-	    Deleted = 3,
+	    Deleted = 3
 	}
 	export const ENTITY_VERSION_PROPERTY = "_version_";
 	export const ENTITY_EXTENSION_SYMBOL = "__extension__";
@@ -1155,7 +1161,7 @@ export namespace AschCore
 	export enum EntityChangeType {
 	    New = 1,
 	    Modify = 2,
-	    Delete = 3,
+	    Delete = 3
 	}
 	export interface PropertyChange<E extends object> {
 	    name: string & ((keyof E) | '_version_');
