@@ -330,6 +330,16 @@ export namespace AschCore
 	     * SmartDB will check modifier properties in model if checkModifier is true
 	     */
 	    checkModifier?: boolean;
+	    /**
+	     * Block chain DB file name
+	     * @default 'blockchain.db'
+	     */
+	    blockChainDbName?: string;
+	    /**
+	     * Local DB file name
+	     * @default 'local.db'
+	     */
+	    localDbName?: string;
 	};
 	/**
 	 * ORM like to operate blockchain data
@@ -437,7 +447,7 @@ export namespace AschCore
 	     * rollback local tables changes saveLocalChanges
 	     * @param serial serial number return from saveLocalChanges
 	     */
-	    rollbackLocalChanges(serial: number): Promise<void>;
+	    rollbackLocalChanges(serial?: number): Promise<void>;
 	    /**
 	     * create a new entity which change will be tracked and persistented (by saveChanges) automatically
 	     * @param model modelName or model type
