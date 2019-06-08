@@ -69,10 +69,15 @@ export namespace AschCore
 	export type FilterFunction<T> = (e: T) => boolean;
 	export type Callback<TResult> = (err: Nullable<Error>, data: TResult) => void;
 	export function makeJsonObject<T>(iterable: Iterable<T>, getKey: (t: T) => string, getValue: (t: T) => any): JsonObject;
+	export function callWithTimeout<T>(func: () => Promise<T>, timeout: number): Promise<T>;
 	export function deepCopy<T>(src: T): T;
 	export function partialCopy<T extends object>(src: T, keysOrKeyFilter: string[] | ((key: string) => boolean), dest?: Partial<T>): Partial<T>;
 	export function isPrimitiveKey(key: any): boolean;
+	export function nullOrUndefined(value: any): boolean;
 	export class NotImplementError extends Error {
+	    constructor(message?: string);
+	}
+	export class TimeoutError extends Error {
 	    constructor(message?: string);
 	}
 	export class CodeContractError extends Error {
@@ -109,6 +114,10 @@ export namespace AschCore
 	    name?: string;
 	    maxHistoryVersionsHold?: number;
 	}
+	export interface SqlAggregate {
+	    func: 'max' | 'min' | 'avg' | 'sum' | 'count';
+	    args: string[];
+	}
 	export class DbSession extends AsyncEventEmitter {
 	    static readonly events: {
 	        beforeSaveChanges: string;
@@ -132,6 +141,8 @@ export namespace AschCore
 	    queryByJson<E extends object>(schema: ModelSchema<E>, params: JsonObject): Promise<E[]>;
 	    exists<E extends object>(schema: ModelSchema<E>, condition: SqlCondition): Promise<boolean>;
 	    count<E extends object>(schema: ModelSchema<E>, condition: SqlCondition): Promise<number>;
+	    sqlQuery<E extends object>(sql: string, parameters?: JsonObject): Promise<E[]>;
+	    queryAggregate<E extends object>(schema: ModelSchema<E>, aggrate: SqlAggregate, condition?: SqlCondition): Promise<MaybeUndefined<number>>;
 	    create<E extends object>(schema: ModelSchema<E>, entity: Partial<E>): E;
 	    load<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): Promise<MaybeUndefined<E>>;
 	    loadSync<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<E>;
@@ -175,15 +186,15 @@ export namespace AschCore
 
 	//declarations/Log.d.ts
 	export enum LogLevel {
-	    All = 127,
-	    Trace = 64,
-	    Debug = 32,
-	    Log = 16,
-	    Info = 8,
-	    Warn = 4,
-	    Error = 2,
-	    Fatal = 1,
-	    None = 0
+	    all = 0,
+	    log = 0,
+	    trace = 1,
+	    debug = 2,
+	    info = 3,
+	    warn = 4,
+	    error = 5,
+	    fatal = 6,
+	    none = 99
 	}
 	export interface Logger {
 	    logLevel: LogLevel;
@@ -192,15 +203,15 @@ export namespace AschCore
 	    readonly logEnabled: boolean;
 	    readonly debugEnabled: boolean;
 	    readonly warnEnabled: boolean;
-	    readonly errorEnaled: boolean;
+	    readonly errorEnabled: boolean;
 	    readonly fatalEnabled: boolean;
 	    trace(msg: string, ...params: any[]): void;
 	    debug(msg: string, ...params: any[]): void;
 	    log(msg: string, ...params: any[]): void;
 	    info(msg: string, ...params: any[]): void;
 	    warn(msg: string, ...params: any[]): void;
-	    error(msg: string, err: Error): void;
-	    fatal(msg: string, err: Error): void;
+	    error(msg: string, ...params: any[]): void;
+	    fatal(msg: string, ...params: any[]): void;
 	}
 	export interface LogFactory {
 	    createLog: (name: string) => Logger;
@@ -340,7 +351,21 @@ export namespace AschCore
 	     * @default 'local.db'
 	     */
 	    localDbName?: string;
+	    /**
+	     * @default 5000 (ms)
+	     */
+	    commitTimeout?: number;
+	    /**
+	     * @default {}
+	     */
+	    external?: JsonObject;
 	};
+	export interface SmartDBCheckResult {
+	    consistent: boolean;
+	    blockHeight: number;
+	    dbHeight: number;
+	    maxTransactionHeight: number;
+	}
 	/**
 	 * ORM like to operate blockchain data
 	 * @event ready emmit after initialized
@@ -397,13 +422,13 @@ export namespace AschCore
 	     * hold a lock name which only succeed in first time of each block.
 	     * @param lockName lock name
 	     * @param notThrow do not throw exception if lock failed
-	     * @throws lock faild if lockName exists already and notThrow is false
+	     * @throws lock failed if lockName exists already and notThrow is false
 	     */
 	    lockInCurrentBlock(lockName: string, notThrow?: boolean): boolean;
 	    /**
 	   * hold a lock name which only succeed in first time of each block.
 	   * @param lockName lock name
-	   * @throws lock faild if lockName exists already
+	   * @throws lock failed if lockName exists already
 	   */
 	    lock(lockName: string): void;
 	    /**
@@ -429,6 +454,10 @@ export namespace AschCore
 	     * @param blockHeader
 	     */
 	    beginBlock(block: Block): void;
+	        model: string;
+	        keyObject: JsonObject;
+	        valueField: string;
+	    };
 	    /**
 	     * commit block changes
 	     */
@@ -514,13 +543,19 @@ export namespace AschCore
 	    /**
 	     * find entities from database
 	     * @param model model name or model type
-	     * @param params mango like query params object
+	     * @param params mongo like query params object
 	     */
 	    findOne<E extends object>(model: ModelNameOrType<E>, params: JsonObject): Promise<MaybeUndefined<E>>;
 	    /**
+	     * query aggregate( max, min, avg ) value from database
+	     * @param model model name or model type
+	     * @param params mongo like query params object
+	     */
+	    queryAggregate<E extends object>(model: ModelNameOrType<E>, aggregate: SqlAggregate, params?: JsonObject): Promise<MaybeUndefined<number>>;
+	    /**
 	   * find entities from database
 	   * @param model model name or model type
-	   * @param params mango like query params object
+	   * @param params mongo like query params object
 	   */
 	    findAll<E extends object>(model: ModelNameOrType<E>, params: JsonObject): Promise<E[]>;
 	    /**
@@ -989,6 +1024,7 @@ export namespace AschCore
 	    beginTrans(): Promise<DBTransaction>;
 	}
 	export interface DBTransaction {
+	    inTransaction: boolean;
 	    commit(): Promise<void>;
 	    rollback(): Promise<void>;
 	}
@@ -1074,6 +1110,7 @@ export namespace AschCore
 	    buildDelete<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): SqlAndParameters;
 	    buildUpdate<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>, fieldValues: JsonObject, version: number): SqlAndParameters;
 	    buildSelect<E extends object>(schema: ModelSchema<E>, params: JsonObject): SqlAndParameters;
+	    buildAggregate<E extends object>(schema: ModelSchema<E>, expression: string, where?: SqlCondition): SqlAndParameters;
 	    buildSelect<E extends object>(schema: ModelSchema<E>, fields: string[], where: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, join?: JsonObject): SqlAndParameters;
 	}
 	export class JsonSqlBuilder implements SqlBuilder {
@@ -1083,6 +1120,7 @@ export namespace AschCore
 	    buildDelete<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): SqlAndParameters;
 	    buildUpdate<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>, fieldValues: JsonObject, version: number): SqlAndParameters;
 	    buildSelect<E extends object>(schema: ModelSchema<E>, fieldsOrParams: string[] | JsonObject, where?: SqlCondition, resultRange?: SqlResultRange, sort?: SqlOrder, join?: JsonObject): SqlAndParameters;
+	    buildAggregate<E extends object>(schema: ModelSchema<E>, expression: string, where?: SqlCondition): SqlAndParameters;
 	}
 
 	//declarations/sqldb/SqliteConnection.d.ts
