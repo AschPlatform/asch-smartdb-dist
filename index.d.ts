@@ -47,7 +47,7 @@ export namespace AschCore
 	    push(block: Block): void;
 	    get(height: number): MaybeUndefined<Block>;
 	    getById(id: string): MaybeUndefined<Block>;
-	    evitUntil(minEvitHeight: number): void;
+	    evitUntil(toHeight: number): void;
 	}
 
 	//declarations/Common.d.ts
@@ -129,6 +129,7 @@ export namespace AschCore
 	    };
 	    constructor(connection: DbConnection, onLoadHistory: Nullable<LoadChangesHistoryAction>, sessionOptions: DbSessionOptions);
 	    readonly isOpen: boolean;
+	    readonly confirmedTransactionIds: string[];
 	    syncSchema<E extends object>(schema: ModelSchema<E>): void;
 	    updateSchema<E extends object>(schema: ModelSchema<E>): Promise<void>;
 	    registerSchema(...schemas: ModelSchema<Entity>[]): void;
@@ -164,7 +165,7 @@ export namespace AschCore
 	    increase<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>, increasements: Partial<E>): Partial<E>;
 	    delete<E extends object>(schema: ModelSchema<E>, key: NormalizedEntityKey<E>): void;
 	    beginTransaction(): Promise<DBTransaction>;
-	    beginEntityTransaction(): void;
+	    beginEntityTransaction(txId: string): void;
 	    commitEntityTransaction(): void;
 	    rollbackEntityTransaction(): void;
 	}
@@ -326,6 +327,8 @@ export namespace AschCore
 	}
 
 	//declarations/SmartDB.d.ts
+	/// <reference types="node" />
+
 	export type SmartDBOptions = {
 	    /**
 	     * cached history count(block count), used to rollback block
@@ -354,7 +357,7 @@ export namespace AschCore
 	    /**
 	     * @default 5000 (ms)
 	     */
-	    commitTimeout?: number;
+	    blockTimeout?: number;
 	    /**
 	     * @default {}
 	     */
@@ -383,6 +386,8 @@ export namespace AschCore
 	        afterCommitContract: string;
 	        beforeRollbackContract: string;
 	        afterRollbackContract: string;
+	        commitBlockTimeout: string;
+	        rollbackBlockTimeout: string;
 	    };
 	    /**
 	     * Constructor
@@ -440,7 +445,7 @@ export namespace AschCore
 	    /**
 	     * begin a contract transaction which effect entities in memory
 	     */
-	    beginContract(): void;
+	    beginContract(txId: string): void;
 	    /**
 	     * commit entities changes , these changes will be save into database when block forged
 	     */
@@ -454,10 +459,9 @@ export namespace AschCore
 	     * @param blockHeader
 	     */
 	    beginBlock(block: Block): void;
-	        model: string;
-	        keyObject: JsonObject;
-	        valueField: string;
-	    };
+	    getChangesHash(): string;
+	    getConfirmedTransactionIds(): string[];
+	    setBlockTimeout(timeout: number): void;
 	    /**
 	     * commit block changes
 	     */
@@ -1169,7 +1173,7 @@ export namespace AschCore
 	    };
 	    readonly trackingEntities: Iterable<TrackingEntity<Entity>>;
 	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
-	    getConfimedChanges(): EntityChanges<Entity>[];
+	    getConfirmedChanges(): EntityChanges<Entity>[];
 	    trackNew<E extends object>(schema: ModelSchema<E>, entity: E): TrackingEntity<E>;
 	    trackPersistent<E extends object>(schema: ModelSchema<E>, entity: Versioned<E>): TrackingEntity<E>;
 	    trackDelete<E extends object>(schema: ModelSchema<E>, te: TrackingEntity<E>): void;
@@ -1239,7 +1243,7 @@ export namespace AschCore
 	    acceptChanges(historyVersion: number): void;
 	    rejectChanges(): void;
 	    rollbackChanges(historyVersion: number): Promise<void>;
-	    getConfimedChanges(): EntityChanges<Entity>[];
+	    getConfirmedChanges(): EntityChanges<Entity>[];
 	    isTracking<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): boolean;
 	    getTrackingEntity<E extends object>(schema: ModelSchema<E>, key: EntityKey<E>): MaybeUndefined<TrackingEntity<E>>;
 	    isConfirming: boolean;
