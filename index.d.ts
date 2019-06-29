@@ -4,6 +4,7 @@ export namespace AschCore
 	/// <reference types="node" />
 	export interface BlockHeader extends Entity {
 	    height: number;
+	    version?: number;
 	    id?: string;
 	    timestamp?: number;
 	    payloadLength?: number;
@@ -459,6 +460,10 @@ export namespace AschCore
 	     * @param blockHeader
 	     */
 	    beginBlock(block: Block): Promise<void>;
+	        model: string;
+	        keyObject: JsonObject;
+	        valueField: string;
+	    };
 	    getChangesHash(): string;
 	    getConfirmedTransactionIds(): string[];
 	    setBlockTimeout(timeout: number): void;
