@@ -561,6 +561,7 @@ export namespace AschCore
 	     * @param params mongo like query params object
 	     */
 	    queryAggregate<E extends object>(model: ModelNameOrType<E>, aggregate: SqlAggregate, params?: JsonObject): Promise<MaybeUndefined<number>>;
+	    sqlQuery<E extends object>(model: ModelNameOrType<E>, sql: string, parameters?: JsonObject): Promise<E[]>;
 	    /**
 	   * find entities from database
 	   * @param model model name or model type
@@ -1170,6 +1171,7 @@ export namespace AschCore
 	export type Stack<T> = Array<T>;
 	export const Stack: ArrayConstructor;
 	export class BasicEntityTracker implements EntityTracker {
+	    getMinVersionHold(): number;
 	    initVersion(version: number): Promise<void>;
 	    makeModelAndKey<E extends object>(schema: ModelSchema<E>, key: PrimaryKey<E>): ModelAndKey;
 	    splitModelAndKey<E extends object>(modelAndKey: ModelAndKey): {
@@ -1191,9 +1193,6 @@ export namespace AschCore
 	    beginConfirm(): void;
 	    confirm(): void;
 	    cancelConfirm(): void;
-	        min: number;
-	        max: number;
-	    };
 	    getChangesUntil(historyVersion: number): Promise<Stack<EntityChanges<Entity>>>;
 	}
 
