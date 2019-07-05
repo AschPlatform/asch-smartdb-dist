@@ -329,7 +329,6 @@ export namespace AschCore
 
 	//declarations/SmartDB.d.ts
 	/// <reference types="node" />
-	import * as crypto from 'crypto';
 	export type SmartDBOptions = {
 	    /**
 	     * cached history count(block count), used to rollback block
@@ -460,11 +459,7 @@ export namespace AschCore
 	     * @param blockHeader
 	     */
 	    beginBlock(block: Block): Promise<void>;
-	        model: string;
-	        keyObject: JsonObject;
-	        valueField: string;
-	    };
-	    getChangesHash(): string;
+	    getChangesHash(firstChangesOnly?: boolean): string;
 	    getConfirmedTransactionIds(): string[];
 	    setBlockTimeout(timeout: number): void;
 	    /**

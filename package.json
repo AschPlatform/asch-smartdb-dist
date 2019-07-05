@@ -1,7 +1,7 @@
 {
   "name": "asch-smartdb",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Asch core component, provide ORM like interface to operate data in blockchain",
   "license": "MIT",
   "readmeFilename": "README.md",
